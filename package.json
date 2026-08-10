@@ -9,7 +9,7 @@
     "lint": "pnpm --filter web lint",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test:unit": "pnpm --filter web test:unit",
-    "test:integration": "pnpm --filter web test:integration",
+    "test:integration": "dotenv -e .env -- pnpm --filter web test:integration",
     "e2e:smoke": "pnpm --filter web e2e:smoke",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
@@ -18,7 +18,8 @@
     "db:migrate:deploy": "dotenv -e .env -- pnpm --filter web exec prisma migrate deploy",
     "db:studio": "dotenv -e .env -- pnpm --filter web exec prisma studio",
     "worker:dev": "dotenv -e .env -- pnpm --filter worker dev",
-    "worker:start": "dotenv -e .env -- pnpm --filter worker start"
+    "worker:start": "dotenv -e .env -- pnpm --filter worker start",
+    "outbox:example": "dotenv -e .env -- pnpm --filter @volunteer-portal/outbox example"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0"

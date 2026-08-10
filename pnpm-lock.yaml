@@ -48,12 +48,18 @@ importers:
       '@types/node':
         specifier: ^20
         version: 20.19.43
+      '@types/pg':
+        specifier: 8.11.10
+        version: 8.11.10
       '@types/react':
         specifier: ^19
         version: 19.2.18
       '@types/react-dom':
         specifier: ^19
         version: 19.2.4(@types/react@19.2.18)
+      '@volunteer-portal/outbox':
+        specifier: workspace:*
+        version: link:../../packages/outbox
       eslint:
         specifier: ^9
         version: 9.39.5(jiti@2.7.0)
@@ -63,6 +69,9 @@ importers:
       eslint-plugin-import:
         specifier: ^2.32.0
         version: 2.32.0(@typescript-eslint/parser@8.67.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5(jiti@2.7.0))
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
       prisma:
         specifier: 6.19.3
         version: 6.19.3(typescript@5.9.3)
@@ -99,7 +108,29 @@ importers:
         version: 5.9.3
 
   packages/audit:
+    dependencies:
+      '@volunteer-portal/ulid':
+        specifier: workspace:*
+        version: link:../ulid
     devDependencies:
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
+  packages/outbox:
+    devDependencies:
+      '@types/pg':
+        specifier: 8.11.10
+        version: 8.11.10
+      '@volunteer-portal/ulid':
+        specifier: workspace:*
+        version: link:../ulid
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+      tsx:
+        specifier: 4.23.12
+        version: 4.23.12
       typescript:
         specifier: ^5
         version: 5.9.3
