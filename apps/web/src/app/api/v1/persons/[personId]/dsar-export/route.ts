@@ -12,6 +12,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/server/db/prisma";
+import { DsarRequestNotFoundError, getDsarStatus } from "@/modules/identity";
 import { readExportBundle } from "@/server/dsar/exportStorage";
 import { verifyExportToken } from "@/server/dsar/signing";
 
@@ -33,9 +34,20 @@ export async function GET(
     return NextResponse.json({ error: "Invalid or expired export link." }, { status: 403 });
   }
 
-  const dsarRequest = await prisma.dSARRequest.findUnique({ where: { id: verified.dsarId } });
+  // Routed through the identity module's own sanctioned read (ADR-0001 —
+  // no code outside modules/identity may query its Prisma models
+  // directly, including this route, which lives under app/api/v1 rather
+  // than modules/identity itself).
+  let dsarRequest;
+  try {
+    dsarRequest = await getDsarStatus(prisma, verified.dsarId);
+  } catch (error) {
+    if (error instanceof DsarRequestNotFoundError) {
+      return NextResponse.json({ error: "Export not found or not ready." }, { status: 404 });
+    }
+    throw error;
+  }
   if (
-    !dsarRequest ||
     dsarRequest.personId !== personId ||
     dsarRequest.type !== "export" ||
     dsarRequest.status !== "completed"
