@@ -42,3 +42,122 @@ export class IncompleteGuardianConsentError extends Error {
     this.name = "IncompleteGuardianConsentError";
   }
 }
+
+/**
+ * A `can()` (ADR-0007) check denied the caller's requested action.
+ * Thrown by every privileged use case in this module before it performs
+ * any write — translated to `TRPCError({ code: "FORBIDDEN" })` at the
+ * router boundary.
+ */
+export class ForbiddenActionError extends Error {
+  constructor(action: string) {
+    super(`Not authorized to perform "${action}".`);
+    this.name = "ForbiddenActionError";
+  }
+}
+
+/** No active `identity.role_assignments` row matches the given id. */
+export class RoleAssignmentNotFoundError extends Error {
+  constructor(roleAssignmentId: string) {
+    super(`No active role assignment found for id "${roleAssignmentId}".`);
+    this.name = "RoleAssignmentNotFoundError";
+  }
+}
+
+/**
+ * `role_assignments`' `chk_role_assignments_scope` CHECK: `scopeType =
+ * 'global' ⟺ scopeId IS NULL`; `scopeType ∈ {chapter, team} ⟺ scopeId IS
+ * NOT NULL`.
+ */
+export class InvalidRoleScopeError extends Error {
+  constructor() {
+    super(
+      "scopeId must be null for scopeType 'global', and non-null for " +
+        "'chapter'/'team' (identity.role_assignments chk_role_assignments_scope).",
+    );
+    this.name = "InvalidRoleScopeError";
+  }
+}
+
+/** No `identity.persons` row exists for the given id. */
+export class PersonNotFoundError extends Error {
+  constructor(personId: string) {
+    super(`No person found for id "${personId}".`);
+    this.name = "PersonNotFoundError";
+  }
+}
+
+/** RecordConsent's precondition: "`personId` refers to an *active* Person." */
+export class PersonNotActiveError extends Error {
+  constructor(personId: string) {
+    super(`Person "${personId}" is not active.`);
+    this.name = "PersonNotActiveError";
+  }
+}
+
+/** RevokeConsent's precondition: an active (non-revoked) ConsentRecord must exist. */
+export class NoActiveConsentError extends Error {
+  constructor(personId: string, purpose: string) {
+    super(`No active consent of purpose "${purpose}" found for person "${personId}".`);
+    this.name = "NoActiveConsentError";
+  }
+}
+
+/**
+ * DSARRequest invariant 3: "Only one *open* (`pending`/`processing`)
+ * request of a given `type` may exist per `personId` at a time."
+ */
+export class OpenDsarRequestExistsError extends Error {
+  constructor(personId: string, type: string) {
+    super(`An open ${type} DSAR request already exists for person "${personId}".`);
+    this.name = "OpenDsarRequestExistsError";
+  }
+}
+
+/** Erasure was requested for a Person already `status = 'anonymized'` (terminal). */
+export class PersonAlreadyAnonymizedError extends Error {
+  constructor(personId: string) {
+    super(`Person "${personId}" is already anonymized.`);
+    this.name = "PersonAlreadyAnonymizedError";
+  }
+}
+
+/** No `identity.chapters` row exists for the given id. */
+export class ChapterNotFoundError extends Error {
+  constructor(chapterId: string) {
+    super(`No chapter found for id "${chapterId}".`);
+    this.name = "ChapterNotFoundError";
+  }
+}
+
+/** `chapters.slug` UNIQUE constraint. */
+export class ChapterSlugTakenError extends Error {
+  constructor(slug: string) {
+    super(`Chapter slug "${slug}" is already taken.`);
+    this.name = "ChapterSlugTakenError";
+  }
+}
+
+/**
+ * Chapter invariant 2: "`leadPersonId`, when set, must correspond to a
+ * Person holding an active `chapter_lead` role assignment scoped to this
+ * chapter — enforced at the `AssignChapterLead` application-layer use
+ * case."
+ */
+export class NotAnActiveChapterLeadError extends Error {
+  constructor(personId: string, chapterId: string) {
+    super(
+      `Person "${personId}" does not hold an active chapter_lead role assignment ` +
+        `scoped to chapter "${chapterId}" — grant the role first via GrantRole.`,
+    );
+    this.name = "NotAnActiveChapterLeadError";
+  }
+}
+
+/** A DSAR export was requested/fetched that has not (yet) reached `completed`. */
+export class DsarExportNotReadyError extends Error {
+  constructor(dsarId: string) {
+    super(`DSAR export "${dsarId}" is not ready for download yet.`);
+    this.name = "DsarExportNotReadyError";
+  }
+}

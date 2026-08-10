@@ -21,6 +21,7 @@
     "@supabase/supabase-js": "^2.112.2",
     "@trpc/server": "^11.18.0",
     "@volunteer-portal/audit": "workspace:*",
+    "@volunteer-portal/authz": "workspace:*",
     "@volunteer-portal/ulid": "workspace:*",
     "next": "16.3.0",
     "react": "19.2.8",

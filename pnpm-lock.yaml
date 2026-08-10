@@ -32,6 +32,9 @@ importers:
       '@volunteer-portal/audit':
         specifier: workspace:*
         version: link:../../packages/audit
+      '@volunteer-portal/authz':
+        specifier: workspace:*
+        version: link:../../packages/authz
       '@volunteer-portal/ulid':
         specifier: workspace:*
         version: link:../../packages/ulid
@@ -130,6 +133,12 @@ importers:
       '@volunteer-portal/ulid':
         specifier: workspace:*
         version: link:../ulid
+    devDependencies:
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
+  packages/authz:
     devDependencies:
       typescript:
         specifier: ^5

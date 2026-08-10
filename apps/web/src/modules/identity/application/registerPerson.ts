@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { newId } from "@volunteer-portal/ulid";
+import { recordAuditEvent } from "@volunteer-portal/audit";
 import type { VerifiedSupabaseSession } from "@/server/auth/verified-session";
 import {
   AgeGateError,
@@ -96,7 +97,7 @@ export async function registerPerson(
           dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : null,
           ageAttested16Plus: input.ageAttested16Plus,
         },
-        select: { id: true, publicSlug: true },
+        select: { id: true, publicSlug: true, email: true, displayName: true, createdAt: true },
       });
 
       await tx.consentRecord.create({
@@ -125,11 +126,8 @@ export async function registerPerson(
         });
       }
 
-      // No use of `@volunteer-portal/audit`'s `recordAuditEvent()` here —
-      // that helper is for *privileged* actions (ADR-0014 §4); a person
-      // registering their own account is a plain domain event, not an
-      // audited admin action. Written directly to this schema's own
-      // outbox, same table `recordAuditEvent()` itself writes into.
+      // PersonRegistered payload, field-for-field per
+      // docs/ddd/identity-access.md's Domain Events table.
       await tx.identityDomainEvent.create({
         data: {
           id: newId(),
@@ -139,9 +137,27 @@ export async function registerPerson(
           payload: {
             personId: created.id,
             publicSlug: created.publicSlug,
+            email: created.email,
+            displayName: created.displayName,
             primaryChapterId: input.primaryChapterId,
+            ageAttested16Plus: input.ageAttested16Plus,
+            registeredAt: created.createdAt.toISOString(),
           } satisfies Prisma.InputJsonValue,
         },
+      });
+
+      // Key Use Case 1 (RegisterPerson) Post: "`recordAuditEvent()` tags
+      // the same outbox write `audit: true` (`action = 'person.register'`),
+      // drained into `admin.audit_log` by `audit_log_writer`" — every one
+      // of this bounded context's 9 key use cases tags its action this
+      // way (ADR-0014 §4's single audit mechanism), including this one.
+      await recordAuditEvent(tx.identityDomainEvent, {
+        actorId: created.id,
+        actorType: "user",
+        action: "person.register",
+        resourceType: "person",
+        resourceId: created.id,
+        metadata: { primaryChapterId: input.primaryChapterId },
       });
 
       return created;
