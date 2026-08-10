@@ -8,6 +8,22 @@
  * never be imported directly by another module — see the module-boundary
  * lint rule (eslint.config.mjs) for enforcement.
  *
- * Stub only: no domain logic is implemented in this phase.
+ * Phase 2 scope: the RegisterPerson anti-corruption translation (ADR-0006)
+ * and its read-side counterpart only — Chapter/RoleAssignment/Consent/DSAR
+ * use cases beyond initial-registration consent are not built yet.
  */
-export {};
+export { registerPerson } from "./application/registerPerson";
+export type {
+  GuardianConsentInput,
+  RegisterPersonInput,
+  RegisteredPerson,
+} from "./application/registerPerson";
+
+export { findPersonByAuthId } from "./application/findPersonByAuthId";
+export type { PersonSummary } from "./application/findPersonByAuthId";
+
+export {
+  AgeGateError,
+  IncompleteGuardianConsentError,
+  PersonAlreadyRegisteredError,
+} from "./domain/errors";

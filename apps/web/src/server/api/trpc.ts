@@ -7,21 +7,53 @@
  * (`./routers/*.ts`) import `router` / `publicProcedure` from here rather
  * than each creating their own tRPC instance.
  *
- * Phase 0 scope: no domain logic exists yet (no Person, no auth session),
- * so the context is intentionally empty. ADR-0003's Implementation Notes
- * describe a Supabase-session-derived `subject` on `ctx` and a
- * `protectedProcedure` that requires it — that lands once the `identity`
- * module has something to authenticate against.
+ * Phase 2: the context now resolves a real Supabase session
+ * (ADR-0006) and the `identity.persons` row it maps to (ADR-0003's
+ * Implementation Notes: "the resolved `person` ... is attached to tRPC
+ * context, so every procedure has `ctx.person` available"). Verification
+ * happens exactly like `proxy.ts` (`getClaims()` — real JWKS-checked
+ * signature verification, not a mocked one) but this context is
+ * read-only with respect to cookies: session *refresh* (writing renewed
+ * cookies back to the response) is `proxy.ts`'s job, since a tRPC
+ * fetch-adapter Route Handler has no response object to attach `Set-Cookie`
+ * headers to mid-request the way `NextResponse` does.
  */
-import { initTRPC } from "@trpc/server";
+import { initTRPC, TRPCError } from "@trpc/server";
+import { createServerClient, parseCookieHeader } from "@supabase/ssr";
+import { getSupabaseAuthEnv } from "../auth/env";
+import { SUPABASE_COOKIE_OPTIONS } from "../auth/cookies";
+import { getVerifiedSession, type VerifiedSupabaseSession } from "../auth/verified-session";
+import { prisma } from "../db/prisma";
+import { findPersonByAuthId, type PersonSummary } from "@/modules/identity";
 
 /**
- * Per-request context. Carries the raw request headers so a future
- * `identity`-backed context builder can resolve the Supabase session
- * cookie from them; nothing reads `headers` yet (no auth in Phase 0).
+ * Per-request context. `supabaseSession` is the narrow, ACL'd shape from
+ * `verified-session.ts` — `null` when the request has no valid session.
+ * `person` is the corresponding `identity.persons` row, looked up by
+ * `supabaseAuthId`; it is `null` both when unauthenticated *and* for an
+ * authenticated caller who has verified with Supabase but not yet
+ * completed `identity.register` (the two cases a procedure distinguishes
+ * via `supabaseSession` vs. `person` being null).
  */
-export function createTRPCContext(opts: { headers: Headers }) {
-  return { headers: opts.headers };
+export async function createTRPCContext(opts: { headers: Headers }) {
+  const { url, anonKey } = getSupabaseAuthEnv();
+  const supabase = createServerClient(url, anonKey, {
+    cookieOptions: SUPABASE_COOKIE_OPTIONS,
+    cookies: {
+      getAll: () => parseCookieHeader(opts.headers.get("cookie") ?? ""),
+      // Read-only here by design — see file header. If a refresh is ever
+      // attempted from within this context, @supabase/ssr logs its own
+      // warning; it does not throw.
+      setAll: () => {},
+    },
+  });
+
+  const supabaseSession = await getVerifiedSession(supabase);
+  const person = supabaseSession
+    ? await findPersonByAuthId(prisma, supabaseSession.supabaseAuthId)
+    : null;
+
+  return { headers: opts.headers, prisma, supabaseSession, person };
 }
 
 export type Context = Awaited<ReturnType<typeof createTRPCContext>>;
@@ -31,10 +63,33 @@ const t = initTRPC.context<Context>().create();
 /** Reusable building block for every bounded-context sub-router. */
 export const router = t.router;
 
-/**
- * Base procedure with no auth requirement. Every procedure in Phase 0 is
- * built from this — `protectedProcedure` (requiring `can(ctx.subject, ...)`
- * per ADR-0003) is introduced once `identity` and the `platform/policy`
- * module exist.
- */
+/** Base procedure with no auth requirement. */
 export const publicProcedure = t.procedure;
+
+/**
+ * Requires a verified Supabase session, but not yet a registered `Person`
+ * — the exact precondition `identity.register` itself needs (a caller who
+ * has authenticated with Supabase but has no `Person` row yet). Narrows
+ * `ctx.supabaseSession` to non-null for the resolver.
+ */
+export const sessionProcedure = t.procedure.use(({ ctx, next }) => {
+  if (!ctx.supabaseSession) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "No verified Supabase session." });
+  }
+  return next({ ctx: { ...ctx, supabaseSession: ctx.supabaseSession as VerifiedSupabaseSession } });
+});
+
+/**
+ * Requires a registered `Person` (ADR-0003's forecasted `protectedProcedure`:
+ * "requiring `can(ctx.subject, ...)` ... is introduced once `identity` and
+ * the `platform/policy` module exist"). The `can(subject, action, resource)`
+ * policy check itself (ADR-0007) is not built in this phase — this is the
+ * narrower "is anybody logged in and registered at all" guard every
+ * privileged procedure will layer `can()` on top of later.
+ */
+export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
+  if (!ctx.person) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "No registered person for this session." });
+  }
+  return next({ ctx: { ...ctx, person: ctx.person as PersonSummary } });
+});
