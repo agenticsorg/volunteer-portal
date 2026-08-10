@@ -115,8 +115,12 @@ export async function grantRole(prisma: PrismaClient, input: GrantRoleInput): Pr
   } catch (error) {
     // A concurrent grant of the exact same tuple raced us past the
     // `findActiveAssignment` check above — `uq_role_assignments_active`
-    // (the partial unique index) is the real backstop; treat it the same
-    // as the pre-check finding an existing row (RoleAssignment invariant 2).
+    // (the partial unique index, keyed on `COALESCE(scope_id, '')` so a
+    // `global`-scoped tuple's NULL `scope_id` collides correctly instead
+    // of two NULLs silently coexisting — see the
+    // `..._fix_role_assignments_active_null_scope_uniqueness` migration)
+    // is the real backstop; treat it the same as the pre-check finding an
+    // existing row (RoleAssignment invariant 2).
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === PRISMA_UNIQUE_CONSTRAINT_VIOLATION

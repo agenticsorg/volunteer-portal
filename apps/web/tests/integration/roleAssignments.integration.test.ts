@@ -81,6 +81,20 @@ describe("grantRole / revokeRole (integration)", () => {
     expect(count).toBe(1);
   });
 
+  it(
+    "uq_role_assignments_active rejects two active global-scoped rows for the same " +
+      "(subject, role) even bypassing grantRole's own pre-check (invariant 2, DB-level " +
+      "backstop — global scope_id is NULL, so the index normalizes it via COALESCE)",
+    async () => {
+      const subject = track((await createPerson(prisma)).id);
+      await grantRoleDirect(prisma, { subjectId: subject, role: "org_admin", grantedBy: subject });
+
+      await expect(
+        grantRoleDirect(prisma, { subjectId: subject, role: "org_admin", grantedBy: subject }),
+      ).rejects.toThrow(/Unique constraint failed/);
+    },
+  );
+
   it("a chapter_lead can grant mentor/volunteer scoped to their own chapter, but not elsewhere", async () => {
     const admin = track((await createPerson(prisma)).id);
     const lead = track((await createPerson(prisma)).id);
