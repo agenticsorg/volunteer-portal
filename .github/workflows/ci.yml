@@ -1,11 +1,14 @@
 name: CI
 
-# Required status checks on PRs into main (ADR-0015). This is Phase 0's
-# subset of the full four-layer pyramid: lint, typecheck, unit tests,
-# e2e-smoke, and a Prisma migration dry-run against a disposable shadow
-# database. Integration and contract-test jobs (testcontainers,
-# OpenAPI-response validation) land once a bounded context has real
-# behavior for them to exercise — there is no domain logic in this phase.
+# Required status checks on PRs into main (ADR-0015). Phase 1 (Event
+# Backbone & Platform Audit Log) adds this repo's first real domain
+# behavior — admin.audit_log, the transactional outbox, and the
+# graphile-worker audit_log_writer consumer — so `test-integration` now
+# runs the compliance-critical audit-log integration suite (via
+# testcontainers, see apps/web/tests/integration/setup.ts) as a required
+# check alongside lint, typecheck, unit tests, e2e-smoke, and the Prisma
+# migration dry-run against a disposable shadow database. The contract-test
+# job (OpenAPI-response validation) still lands once `/api/v1` exists.
 on:
   pull_request:
     branches: [main]
@@ -71,6 +74,31 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Vitest unit project
         run: pnpm test:unit
+
+  test-integration:
+    name: "test:integration"
+    runs-on: ubuntu-latest
+    # No `services:` Postgres block here (unlike prisma-migrate-dry-run
+    # below): the "integration" Vitest project's globalSetup
+    # (apps/web/tests/integration/setup.ts) uses `@testcontainers/postgresql`
+    # to start its own disposable postgres:16 container per run, per
+    # ADR-0015. GitHub-hosted ubuntu-latest runners have a Docker daemon
+    # available at the default /var/run/docker.sock with no extra
+    # DOCKER_HOST/dind configuration required — testcontainers talks to it
+    # directly, the same as it does on a developer machine.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Vitest integration project (testcontainers Postgres 16 + graphile-worker, ADR-0015)
+        run: pnpm test:integration
 
   e2e-smoke:
     name: "e2e:smoke"
