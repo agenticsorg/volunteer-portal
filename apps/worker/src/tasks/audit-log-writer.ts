@@ -153,7 +153,9 @@ async function drainSchema(
       await pgClient.query("COMMIT");
       drained += 1;
     } catch (err) {
-      await pgClient.query("ROLLBACK");
+      await pgClient.query("ROLLBACK").catch(() => {
+        /* connection may already be dead; nothing more to do */
+      });
       // Record the failed attempt outside the rolled-back transaction so
       // attempts is still incremented and last_error is observable —
       // this leaves the row for retry on the next poll, up to
