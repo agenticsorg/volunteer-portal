@@ -7,7 +7,7 @@
 // phases; do not add models here as part of Phase 0.
 //
 // Prisma's multi-schema mode has been GA since Prisma 6 (ADR-0004), so no
-// `previewFeatures` entry is required for it on this Prisma 7 install.
+// `previewFeatures` entry is required for it on this Prisma 6.19.3 install.
 
 generator client {
   provider = "prisma-client-js"

@@ -7,7 +7,6 @@
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
     "lint": "pnpm --filter web lint",
-    "lint:boundaries": "pnpm --filter web lint:boundaries",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test:unit": "pnpm --filter web test:unit",
     "test:integration": "pnpm --filter web test:integration",
