@@ -50,6 +50,31 @@ export async function grantRoleDirect(
   });
 }
 
+/**
+ * Builds a `Context` (`server/api/trpc.ts`) for a given `person` row
+ * without going through a real Supabase JWT — the router-level
+ * integration suites (`identityRouter.integration.test.ts`) exercise real
+ * procedures via `createCallerFactory` against this hand-built context, the
+ * same way a verified session would populate `ctx.person`/`ctx.supabaseSession`.
+ */
+export function contextFor(
+  prisma: PrismaClient,
+  person: { id: string; publicSlug: string; displayName: string; avatarUrl: string | null; status: string },
+) {
+  return {
+    headers: new Headers(),
+    prisma,
+    supabaseSession: { supabaseAuthId: newId(), email: `${person.id.toLowerCase()}@example.com` },
+    person: {
+      personId: person.id,
+      publicSlug: person.publicSlug,
+      displayName: person.displayName,
+      avatarUrl: person.avatarUrl,
+      status: person.status,
+    },
+  };
+}
+
 export async function createChapterDirect(
   prisma: PrismaClient,
   overrides: Partial<{ name: string; city: string; country: string }> = {},

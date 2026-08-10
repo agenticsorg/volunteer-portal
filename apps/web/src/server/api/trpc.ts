@@ -63,6 +63,15 @@ const t = initTRPC.context<Context>().create();
 /** Reusable building block for every bounded-context sub-router. */
 export const router = t.router;
 
+/**
+ * Builds a direct (non-HTTP) caller for a router given a `Context` —
+ * tRPC v11's recommended alternative to `router.createCaller`. Used by
+ * integration tests to exercise real procedures (input validation, `can()`
+ * checks via the use cases, error-code translation) against a real
+ * database without going through an HTTP fetch adapter.
+ */
+export const createCallerFactory = t.createCallerFactory;
+
 /** Base procedure with no auth requirement. */
 export const publicProcedure = t.procedure;
 

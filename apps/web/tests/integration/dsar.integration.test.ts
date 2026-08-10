@@ -10,7 +10,23 @@ import {
   requestErasure,
 } from "@/modules/identity";
 import { GET as dsarExportRoute } from "@/app/api/v1/persons/[personId]/dsar-export/route";
+import { POST as erasureRequestsRoute } from "@/app/api/v1/dsar/erasure-requests/route";
 import { createPerson, grantRoleDirect } from "./helpers/identityFixtures";
+
+const TEST_ADMIN_API_KEY = "test-admin-api-key-for-integration-suite";
+
+function postErasureRequest(body: unknown, apiKey: string | null = TEST_ADMIN_API_KEY) {
+  return erasureRequestsRoute(
+    new NextRequest(new URL("http://localhost/api/v1/dsar/erasure-requests"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(apiKey ? { "x-api-key": apiKey } : {}),
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+}
 
 // Exercises RequestDataExport / RequestErasure-AnonymizePerson (Key Use
 // Cases 6-7) end to end: a real DSARRequest state machine, a real file
@@ -188,6 +204,54 @@ describe("requestDataExport / requestErasure (integration)", () => {
       await expect(
         requestErasure(prisma, { personId: person, requestedBy: person }),
       ).rejects.toThrow(OpenDsarRequestExistsError);
+    });
+  });
+
+  // POST /api/v1/dsar/erasure-requests (identity-access-schema-api.md's
+  // REST sketch: "org-admin only, API-key authenticated").
+  describe("POST /api/v1/dsar/erasure-requests", () => {
+    const originalApiKey = process.env.ADMIN_API_KEY;
+    process.env.ADMIN_API_KEY = TEST_ADMIN_API_KEY;
+    afterAll(() => {
+      process.env.ADMIN_API_KEY = originalApiKey;
+    });
+
+    it("rejects a request with no API key", async () => {
+      const person = track((await createPerson(prisma)).id);
+      const response = await postErasureRequest({ personId: person, requestedBy: person }, null);
+      expect(response.status).toBe(401);
+    });
+
+    it("rejects a request with the wrong API key", async () => {
+      const person = track((await createPerson(prisma)).id);
+      const response = await postErasureRequest({ personId: person, requestedBy: person }, "wrong-key");
+      expect(response.status).toBe(401);
+    });
+
+    it("rejects an invalid body", async () => {
+      const response = await postErasureRequest({ personId: "not-a-ulid" });
+      expect(response.status).toBe(400);
+    });
+
+    it("with a valid API key, still enforces can() on requestedBy (403 for a non-admin acting on someone else)", async () => {
+      const requester = track((await createPerson(prisma)).id);
+      const subject = track((await createPerson(prisma)).id);
+      const response = await postErasureRequest({ personId: subject, requestedBy: requester });
+      expect(response.status).toBe(403);
+    });
+
+    it("with a valid API key and an org_admin requestedBy, anonymizes the person", async () => {
+      const admin = track((await createPerson(prisma)).id);
+      await grantRoleDirect(prisma, { subjectId: admin, role: "org_admin", grantedBy: admin });
+      const subject = track((await createPerson(prisma)).id);
+
+      const response = await postErasureRequest({ personId: subject, requestedBy: admin });
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.dsarId).toBeTruthy();
+
+      const row = await prisma.person.findUniqueOrThrow({ where: { id: subject } });
+      expect(row.status).toBe("anonymized");
     });
   });
 });

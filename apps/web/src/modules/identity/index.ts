@@ -25,6 +25,16 @@ export type {
 export { findPersonByAuthId } from "./application/findPersonByAuthId";
 export type { PersonSummary } from "./application/findPersonByAuthId";
 
+/**
+ * The sanctioned cross-context read (identity-access-schema-api.md's
+ * `getPersonSummary` — an Open Host Service). Every other bounded-context
+ * module that needs to display a `personId`'s name/avatar must go through
+ * this function; nothing else exported below reads Person data in a form
+ * a caller outside this module's own tRPC router should ever consume.
+ */
+export { getPersonSummary } from "./application/getPersonSummary";
+export type { PersonPublicSummary } from "./application/getPersonSummary";
+
 export { listActiveRoleAssignments, listRoleAssignmentHistory } from "./application/listActiveRoleAssignments";
 export type { RoleAssignmentRecord } from "./application/listActiveRoleAssignments";
 
@@ -46,11 +56,20 @@ export type { CreateChapterInput, CreatedChapter } from "./application/createCha
 export { assignChapterLead } from "./application/assignChapterLead";
 export type { AssignChapterLeadInput } from "./application/assignChapterLead";
 
+export { listChapters } from "./application/listChapters";
+export type { ChapterListItem, ListChaptersInput } from "./application/listChapters";
+
+export { getConsentForPerson } from "./application/getConsentForPerson";
+export type { CurrentConsentRecord } from "./application/getConsentForPerson";
+
 export { requestDataExport } from "./application/requestDataExport";
 export type { RequestDataExportInput, RequestedDataExport } from "./application/requestDataExport";
 
 export { requestErasure } from "./application/requestErasure";
 export type { RequestErasureInput, ErasureResult } from "./application/requestErasure";
+
+export { getDsarStatus } from "./application/getDsarStatus";
+export type { DsarRequestStatus } from "./application/getDsarStatus";
 
 export {
   AgeGateError,
@@ -68,4 +87,5 @@ export {
   ChapterSlugTakenError,
   NotAnActiveChapterLeadError,
   DsarExportNotReadyError,
+  DsarRequestNotFoundError,
 } from "./domain/errors";

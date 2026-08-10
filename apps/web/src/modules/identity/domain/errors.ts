@@ -161,3 +161,11 @@ export class DsarExportNotReadyError extends Error {
     this.name = "DsarExportNotReadyError";
   }
 }
+
+/** No `identity.dsar_requests` row exists for the given id. */
+export class DsarRequestNotFoundError extends Error {
+  constructor(dsarId: string) {
+    super(`No DSAR request found for id "${dsarId}".`);
+    this.name = "DsarRequestNotFoundError";
+  }
+}
