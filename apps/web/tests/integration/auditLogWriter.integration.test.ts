@@ -46,10 +46,19 @@ describe("audit_log_writer (real worker process, end-to-end)", () => {
   beforeAll(async () => {
     if (!process.env.DATABASE_URL) {
       throw new Error(
-        "DATABASE_URL is not set — run via `pnpm test:integration` (loads .env) not `vitest` directly.",
+        "DATABASE_URL is not set — run via `pnpm test:integration`, which " +
+          "wires up the disposable testcontainers Postgres via " +
+          "tests/integration/setup.ts (Vitest globalSetup), not `vitest` " +
+          "directly.",
       );
     }
 
+    // `env: process.env` is what threads the ephemeral testcontainers
+    // Postgres connection string through to the real spawned worker
+    // process: globalSetup (tests/integration/setup.ts) overwrites
+    // process.env.DATABASE_URL with the container's URI before this test
+    // file is even loaded, so the worker never sees a developer's
+    // persistent docker-compose Postgres.
     worker = spawn("pnpm", ["--filter", "worker", "start"], {
       cwd: REPO_ROOT,
       env: process.env,

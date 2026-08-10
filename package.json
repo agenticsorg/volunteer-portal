@@ -9,7 +9,7 @@
     "lint": "pnpm --filter web lint",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test:unit": "pnpm --filter web test:unit",
-    "test:integration": "dotenv -e .env -- pnpm --filter web test:integration",
+    "test:integration": "pnpm --filter web test:integration",
     "e2e:smoke": "pnpm --filter web e2e:smoke",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
