@@ -11,11 +11,13 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "@trpc/server": "^11.18.0",
     "@volunteer-portal/audit": "workspace:*",
     "@volunteer-portal/ulid": "workspace:*",
     "next": "16.3.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
