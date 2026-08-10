@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.2",
     "@trpc/server": "^11.18.0",
     "@volunteer-portal/audit": "workspace:*",
     "@volunteer-portal/ulid": "workspace:*",
@@ -38,6 +40,7 @@
     "eslint-config-next": "16.3.0",
     "eslint-plugin-import": "^2.32.0",
     "graphile-worker": "0.17.3",
+    "jose": "^6.2.8",
     "pg": "8.23.0",
     "prisma": "6.19.3",
     "tailwindcss": "^4",
