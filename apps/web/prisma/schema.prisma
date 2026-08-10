@@ -1,0 +1,20 @@
+// Agentics Foundation Volunteer Portal — Prisma schema
+//
+// Phase 0 (platform bootstrap): multi-schema mode wiring only. This
+// declares the eight bounded-context Postgres schemas from
+// docs/ddd/00-context-map.md (ADR-0001) so the baseline migration can
+// create them — no models/tables yet. Domain modeling starts in later
+// phases; do not add models here as part of Phase 0.
+//
+// Prisma's multi-schema mode has been GA since Prisma 6 (ADR-0004), so no
+// `previewFeatures` entry is required for it on this Prisma 7 install.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["identity", "volunteering", "training", "gamification", "community", "moderation", "notifications", "admin"]
+}

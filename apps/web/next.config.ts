@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // @volunteer-portal/ulid and @volunteer-portal/audit ship TypeScript
+  // source (no build step) — Next must transpile them like first-party
+  // code rather than treating them as pre-built node_modules packages.
+  transpilePackages: ["@volunteer-portal/ulid", "@volunteer-portal/audit"],
 };
 
 export default nextConfig;
