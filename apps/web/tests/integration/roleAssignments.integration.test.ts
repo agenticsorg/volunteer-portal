@@ -203,4 +203,94 @@ describe("grantRole / revokeRole (integration)", () => {
       revokeRole(prisma, { callerId: admin, roleAssignmentId: "role_does_not_exist" }),
     ).rejects.toThrow(RoleAssignmentNotFoundError);
   });
+
+  // Reviewer-verified gap: privileged mutations never checked the
+  // CALLER's own Person.status, so a suspended/anonymized account could
+  // keep exercising privileged authority via a still-valid session as
+  // long as its role_assignments themselves stayed active. These prove
+  // `can()`'s own caller-status check (packages/authz/src/can.ts) in
+  // isolation, directly mutating the caller's status rather than going
+  // through requestErasure — dsar.integration.test.ts separately proves
+  // the full erasure flow (which ALSO revokes the caller's own role
+  // assignments) end to end.
+  describe("caller status (fail-closed, independent of the target's own role assignments)", () => {
+    it.each(["deactivated", "anonymized"] as const)(
+      "grantRole denies a caller whose own status is %s, even though they still hold an active org_admin role_assignment",
+      async (status) => {
+        const admin = track((await createPerson(prisma)).id);
+        await grantRoleDirect(prisma, { subjectId: admin, role: "org_admin", grantedBy: admin });
+        const subject = track((await createPerson(prisma)).id);
+
+        // chk_persons_anonymized_at requires anonymized_at set together
+        // with status='anonymized' — set both so this update itself is a
+        // valid row, isolating the assertion to can()'s caller-status
+        // check rather than an unrelated CHECK violation.
+        await prisma.person.update({
+          where: { id: admin },
+          data: { status, anonymizedAt: status === "anonymized" ? new Date() : null },
+        });
+
+        await expect(
+          grantRole(prisma, {
+            callerId: admin,
+            subjectId: subject,
+            role: "volunteer",
+            scopeType: "global",
+            scopeId: null,
+          }),
+        ).rejects.toThrow(ForbiddenActionError);
+
+        // The rejection came from can()'s caller-status check, not
+        // because the role assignment itself had somehow been revoked.
+        const stillActive = await listActiveRoleAssignments(prisma, admin);
+        expect(stillActive.some((a) => a.role === "org_admin")).toBe(true);
+      },
+    );
+
+    it("revokeRole denies a caller whose own status is not active", async () => {
+      const admin = track((await createPerson(prisma)).id);
+      await grantRoleDirect(prisma, { subjectId: admin, role: "org_admin", grantedBy: admin });
+      const subject = track((await createPerson(prisma)).id);
+      const granted = await grantRole(prisma, {
+        callerId: admin,
+        subjectId: subject,
+        role: "mentor",
+        scopeType: "global",
+        scopeId: null,
+      });
+
+      await prisma.person.update({ where: { id: admin }, data: { status: "deactivated" } });
+
+      await expect(
+        revokeRole(prisma, { callerId: admin, roleAssignmentId: granted.roleAssignmentId }),
+      ).rejects.toThrow(ForbiddenActionError);
+    });
+
+    it("grantRole resumes working once the caller's status is restored to active", async () => {
+      const admin = track((await createPerson(prisma)).id);
+      await grantRoleDirect(prisma, { subjectId: admin, role: "org_admin", grantedBy: admin });
+      const subject = track((await createPerson(prisma)).id);
+
+      await prisma.person.update({ where: { id: admin }, data: { status: "deactivated" } });
+      await expect(
+        grantRole(prisma, {
+          callerId: admin,
+          subjectId: subject,
+          role: "volunteer",
+          scopeType: "global",
+          scopeId: null,
+        }),
+      ).rejects.toThrow(ForbiddenActionError);
+
+      await prisma.person.update({ where: { id: admin }, data: { status: "active" } });
+      const result = await grantRole(prisma, {
+        callerId: admin,
+        subjectId: subject,
+        role: "volunteer",
+        scopeType: "global",
+        scopeId: null,
+      });
+      expect(result.alreadyActive).toBe(false);
+    });
+  });
 });

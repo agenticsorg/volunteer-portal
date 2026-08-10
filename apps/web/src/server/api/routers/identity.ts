@@ -40,6 +40,7 @@ import {
   findPersonByAuthId,
   getPersonSummary,
   registerPerson,
+  GuardianConsentRequiredError,
   PersonAlreadyRegisteredError,
   listActiveRoleAssignments,
   grantRole,
@@ -207,6 +208,9 @@ export const identityRouter = router({
     } catch (error) {
       if (error instanceof PersonAlreadyRegisteredError) {
         throw new TRPCError({ code: "CONFLICT", message: error.message });
+      }
+      if (error instanceof GuardianConsentRequiredError) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
       }
       throw error;
     }

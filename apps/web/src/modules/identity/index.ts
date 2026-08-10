@@ -73,6 +73,7 @@ export type { DsarRequestStatus } from "./application/getDsarStatus";
 
 export {
   AgeGateError,
+  GuardianConsentRequiredError,
   IncompleteGuardianConsentError,
   PersonAlreadyRegisteredError,
   ForbiddenActionError,

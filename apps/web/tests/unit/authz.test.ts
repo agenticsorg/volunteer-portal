@@ -16,13 +16,73 @@ describe("authz: can()", () => {
   it("throws (fails closed) for an action with no matching rule", () => {
     expect(() =>
       can(
-        { id: "person_1" },
+        { id: "person_1", status: "active" },
         // Intentionally not a valid Action, to prove the fail-closed path.
         "not.a.real.action" as never,
         { type: "widget", scopeType: "global", scopeId: null },
         [],
       ),
     ).toThrow(/no policy rule defined/i);
+  });
+
+  describe("caller status (fail-closed)", () => {
+    // Reviewer-verified gap this proves is fixed: a caller holding every
+    // role assignment a rule would otherwise require must still be denied
+    // outright once their OWN `Person.status` is not "active" — an
+    // anonymized/deactivated account's still-cryptographically-valid
+    // session must not be able to exercise privileged authority
+    // (ADR-0006's Negative Consequences: "checking a persons.status flag
+    // inside the can() policy module on every privileged action").
+    const orgAdmin: RoleAssignmentFact[] = [
+      { role: "org_admin", scopeType: "global", scopeId: null, revokedAt: null },
+    ];
+
+    it.each(["deactivated", "anonymized"] as const)(
+      "denies role.grant for an org_admin whose own status is %s, even though their role_assignments alone would allow it",
+      (status) => {
+        expect(
+          can(
+            { id: "admin_1", status },
+            "role.grant",
+            { type: "role_assignment", scopeType: "global", scopeId: null, role: "volunteer" },
+            orgAdmin,
+          ),
+        ).toBe(false);
+      },
+    );
+
+    it("denies chapter.create for a non-active org_admin", () => {
+      expect(
+        can(
+          { id: "admin_1", status: "anonymized" },
+          "chapter.create",
+          { type: "chapter", scopeType: "global", scopeId: null },
+          orgAdmin,
+        ),
+      ).toBe(false);
+    });
+
+    it("denies dsar.erasure.request for a non-active caller acting on their own data", () => {
+      expect(
+        can(
+          { id: "person_1", status: "deactivated" },
+          "dsar.erasure.request",
+          { type: "dsar_request", scopeType: "global", scopeId: null, ownerId: "person_1" },
+          [],
+        ),
+      ).toBe(false);
+    });
+
+    it("still allows role.grant for the same org_admin once status is active", () => {
+      expect(
+        can(
+          { id: "admin_1", status: "active" },
+          "role.grant",
+          { type: "role_assignment", scopeType: "global", scopeId: null, role: "volunteer" },
+          orgAdmin,
+        ),
+      ).toBe(true);
+    });
   });
 
   describe("role.grant / role.revoke", () => {
@@ -40,7 +100,7 @@ describe("authz: can()", () => {
       for (const action of ["role.grant", "role.revoke"] as const) {
         expect(
           can(
-            { id: "admin_1" },
+            { id: "admin_1", status: "active" },
             action,
             { type: "role_assignment", scopeType: "global", scopeId: null, role: "org_admin" },
             orgAdmin,
@@ -53,7 +113,7 @@ describe("authz: can()", () => {
       for (const role of ["mentor", "volunteer"] as const) {
         expect(
           can(
-            { id: "lead_1" },
+            { id: "lead_1", status: "active" },
             "role.grant",
             { type: "role_assignment", scopeType: "chapter", scopeId: "chapter_london", role },
             chapterLeadOfLondon,
@@ -65,7 +125,7 @@ describe("authz: can()", () => {
     it("a chapter_lead cannot grant a role scoped to a different chapter", () => {
       expect(
         can(
-          { id: "lead_1" },
+          { id: "lead_1", status: "active" },
           "role.grant",
           { type: "role_assignment", scopeType: "chapter", scopeId: "chapter_sv", role: "volunteer" },
           chapterLeadOfLondon,
@@ -77,7 +137,7 @@ describe("authz: can()", () => {
       for (const role of ["org_admin", "content_admin", "moderator"] as const) {
         expect(
           can(
-            { id: "lead_1" },
+            { id: "lead_1", status: "active" },
             "role.grant",
             { type: "role_assignment", scopeType: "chapter", scopeId: "chapter_london", role },
             chapterLeadOfLondon,
@@ -89,7 +149,7 @@ describe("authz: can()", () => {
     it("a revoked org_admin assignment no longer grants authority", () => {
       expect(
         can(
-          { id: "admin_1" },
+          { id: "admin_1", status: "active" },
           "role.grant",
           { type: "role_assignment", scopeType: "global", scopeId: null, role: "volunteer" },
           revokedOrgAdmin,
@@ -100,7 +160,7 @@ describe("authz: can()", () => {
     it("a subject with no assignments at all is denied", () => {
       expect(
         can(
-          { id: "nobody" },
+          { id: "nobody", status: "active" },
           "role.grant",
           { type: "role_assignment", scopeType: "global", scopeId: null, role: "volunteer" },
           [],
@@ -120,11 +180,16 @@ describe("authz: can()", () => {
 
       for (const action of ["chapter.create", "chapter.assign_lead"] as const) {
         expect(
-          can({ id: "admin_1" }, action, { type: "chapter", scopeType: "global", scopeId: null }, orgAdmin),
+          can(
+            { id: "admin_1", status: "active" },
+            action,
+            { type: "chapter", scopeType: "global", scopeId: null },
+            orgAdmin,
+          ),
         ).toBe(true);
         expect(
           can(
-            { id: "lead_1" },
+            { id: "lead_1", status: "active" },
             action,
             { type: "chapter", scopeType: "chapter", scopeId: "chapter_london" },
             chapterLead,
@@ -138,7 +203,7 @@ describe("authz: can()", () => {
     it("allows a subject to request their own data", () => {
       expect(
         can(
-          { id: "person_1" },
+          { id: "person_1", status: "active" },
           action,
           { type: "dsar_request", scopeType: "global", scopeId: null, ownerId: "person_1" },
           [],
@@ -149,7 +214,7 @@ describe("authz: can()", () => {
     it("denies one person requesting another's data without org_admin", () => {
       expect(
         can(
-          { id: "person_1" },
+          { id: "person_1", status: "active" },
           action,
           { type: "dsar_request", scopeType: "global", scopeId: null, ownerId: "person_2" },
           [],
@@ -163,7 +228,7 @@ describe("authz: can()", () => {
       ];
       expect(
         can(
-          { id: "admin_1" },
+          { id: "admin_1", status: "active" },
           action,
           { type: "dsar_request", scopeType: "global", scopeId: null, ownerId: "person_2" },
           orgAdmin,

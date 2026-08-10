@@ -4,6 +4,7 @@ import { recordAuditEvent } from "@volunteer-portal/audit";
 import type { VerifiedSupabaseSession } from "@/server/auth/verified-session";
 import {
   AgeGateError,
+  GuardianConsentRequiredError,
   IncompleteGuardianConsentError,
   PersonAlreadyRegisteredError,
 } from "../domain/errors";
@@ -51,6 +52,29 @@ export interface RegisteredPerson {
 
 const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 
+const MINIMUM_AGE_YEARS = 16;
+
+/**
+ * Real date arithmetic (year/month/day-aware, not a bare year subtraction)
+ * proving whether `dateOfBirth` implies the registrant is at least
+ * `MINIMUM_AGE_YEARS` old as of `asOf` — Person invariant 2's "a
+ * `dateOfBirth` implying 16+" clause. Mirrors the DB-level backstop added
+ * by the `..._enforce_persons_age_gate_db_backstop` migration
+ * (`date_of_birth <= CURRENT_DATE - INTERVAL '16 years'`), so app-layer and
+ * DB-layer agree on the exact same boundary (a person turning 16 today
+ * passes; one day short does not).
+ */
+function isAtLeastMinimumAge(dateOfBirth: Date, asOf: Date = new Date()): boolean {
+  const thresholdDate = new Date(
+    Date.UTC(
+      asOf.getUTCFullYear() - MINIMUM_AGE_YEARS,
+      asOf.getUTCMonth(),
+      asOf.getUTCDate(),
+    ),
+  );
+  return dateOfBirth.getTime() <= thresholdDate.getTime();
+}
+
 /**
  * A public, URL-safe handle distinct from the person's real name/email
  * (`persons.public_slug`, unique). Not a security boundary — collisions on
@@ -79,6 +103,19 @@ export async function registerPerson(
     (!input.guardianConsent.guardianName || !input.guardianConsent.guardianEmail)
   ) {
     throw new IncompleteGuardianConsentError();
+  }
+
+  // Person invariant 2 (age gate), the branch a presence-only check can't
+  // see: a *supplied* dateOfBirth must be run through real date arithmetic
+  // — a DOB is not, by itself, proof of 16+ just because it exists. When
+  // it computes to under 16, a complete guardianConsent is mandatory,
+  // regardless of what ageAttested16Plus claims (a self-attestation cannot
+  // override an actual DOB that says otherwise).
+  if (input.dateOfBirth) {
+    const dob = new Date(input.dateOfBirth);
+    if (!isAtLeastMinimumAge(dob) && !input.guardianConsent) {
+      throw new GuardianConsentRequiredError();
+    }
   }
 
   const personId = newId();

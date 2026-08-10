@@ -3,6 +3,7 @@ import { newId } from "@volunteer-portal/ulid";
 import { recordAuditEvent } from "@volunteer-portal/audit";
 import { can, type Role, type ScopeType } from "@volunteer-portal/authz";
 import { ForbiddenActionError, InvalidRoleScopeError } from "../domain/errors";
+import { getCallerPolicySubject } from "./getCallerPolicySubject";
 import { listActiveRoleAssignments, type RoleAssignmentRecord } from "./listActiveRoleAssignments";
 
 /**
@@ -47,9 +48,12 @@ function assertValidScope(scopeType: ScopeType, scopeId: string | null): void {
 export async function grantRole(prisma: PrismaClient, input: GrantRoleInput): Promise<GrantedRole> {
   assertValidScope(input.scopeType, input.scopeId);
 
-  const callerAssignments = await listActiveRoleAssignments(prisma, input.callerId);
+  const [callerSubject, callerAssignments] = await Promise.all([
+    getCallerPolicySubject(prisma, input.callerId, "role.grant"),
+    listActiveRoleAssignments(prisma, input.callerId),
+  ]);
   const allowed = can(
-    { id: input.callerId },
+    callerSubject,
     "role.grant",
     { type: "role_assignment", scopeType: input.scopeType, scopeId: input.scopeId, role: input.role },
     callerAssignments,

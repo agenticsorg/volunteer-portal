@@ -4,6 +4,7 @@ import { isValidUlid, newId } from "@volunteer-portal/ulid";
 import {
   AgeGateError,
   findPersonByAuthId,
+  GuardianConsentRequiredError,
   IncompleteGuardianConsentError,
   PersonAlreadyRegisteredError,
   registerPerson,
@@ -177,6 +178,77 @@ describe("registerPerson (integration)", () => {
     const input = baseInput({ ageAttested16Plus: false, dateOfBirth: null });
 
     await expect(registerPerson(prisma, input)).rejects.toThrow(AgeGateError);
+  });
+
+  // Person invariant 2, the branch a presence-only check can't see: a
+  // *supplied* dateOfBirth must be run through real date arithmetic, not
+  // merely be non-null.
+  it("rejects a DOB implying under 16 with no guardian consent supplied at all (real date arithmetic, not presence)", async () => {
+    const under16 = new Date();
+    under16.setUTCFullYear(under16.getUTCFullYear() - 12);
+    const input = baseInput({
+      ageAttested16Plus: false,
+      dateOfBirth: under16.toISOString().slice(0, 10),
+      guardianConsent: null,
+    });
+
+    await expect(registerPerson(prisma, input)).rejects.toThrow(GuardianConsentRequiredError);
+
+    // No Person row was created — the app-layer rejection happened before
+    // any write.
+    const count = await prisma.person.count({ where: { supabaseAuthId: input.session.supabaseAuthId } });
+    expect(count).toBe(0);
+  });
+
+  it("rejects a DOB one day short of 16, even with ageAttested16Plus (an actual DOB cannot be overridden by self-attestation)", async () => {
+    const almostSixteen = new Date();
+    almostSixteen.setUTCFullYear(almostSixteen.getUTCFullYear() - 16);
+    almostSixteen.setUTCDate(almostSixteen.getUTCDate() + 1);
+    const input = baseInput({
+      ageAttested16Plus: true,
+      dateOfBirth: almostSixteen.toISOString().slice(0, 10),
+      guardianConsent: null,
+    });
+
+    await expect(registerPerson(prisma, input)).rejects.toThrow(GuardianConsentRequiredError);
+  });
+
+  it("succeeds for a DOB implying under 16 when a complete guardian consent is supplied", async () => {
+    const under16 = new Date();
+    under16.setUTCFullYear(under16.getUTCFullYear() - 11);
+    const input = baseInput({
+      ageAttested16Plus: false,
+      dateOfBirth: under16.toISOString().slice(0, 10),
+      guardianConsent: { guardianName: "Parent Volunteer", guardianEmail: "parent2@example.com" },
+    });
+
+    const result = await registerPerson(prisma, input);
+    personIds.push(result.personId);
+
+    const row = await prisma.person.findUniqueOrThrow({ where: { id: result.personId } });
+    expect(row.status).toBe("active");
+    expect(row.dateOfBirth?.toISOString().slice(0, 10)).toBe(under16.toISOString().slice(0, 10));
+
+    const guardianRecord = await prisma.consentRecord.findFirst({
+      where: { personId: result.personId, purpose: "guardian_consent" },
+    });
+    expect(guardianRecord).toMatchObject({ guardianName: "Parent Volunteer", guardianEmail: "parent2@example.com" });
+  });
+
+  it("succeeds for a DOB exactly implying 16+ with no attestation and no guardian consent needed", async () => {
+    const exactlySixteen = new Date();
+    exactlySixteen.setUTCFullYear(exactlySixteen.getUTCFullYear() - 16);
+    const input = baseInput({
+      ageAttested16Plus: false,
+      dateOfBirth: exactlySixteen.toISOString().slice(0, 10),
+      guardianConsent: null,
+    });
+
+    const result = await registerPerson(prisma, input);
+    personIds.push(result.personId);
+
+    const row = await prisma.person.findUniqueOrThrow({ where: { id: result.personId } });
+    expect(row.status).toBe("active");
   });
 
   it("rejects guardian consent missing either guardian field", async () => {

@@ -3,6 +3,7 @@ import { newId } from "@volunteer-portal/ulid";
 import { recordAuditEvent } from "@volunteer-portal/audit";
 import { can } from "@volunteer-portal/authz";
 import { ForbiddenActionError, OpenDsarRequestExistsError, PersonNotFoundError } from "../domain/errors";
+import { getCallerPolicySubject } from "./getCallerPolicySubject";
 import { listActiveRoleAssignments } from "./listActiveRoleAssignments";
 import { writeExportBundle } from "@/server/dsar/exportStorage";
 import { signExportToken } from "@/server/dsar/signing";
@@ -39,9 +40,12 @@ export async function requestDataExport(
   prisma: PrismaClient,
   input: RequestDataExportInput,
 ): Promise<RequestedDataExport> {
-  const requesterAssignments = await listActiveRoleAssignments(prisma, input.requestedBy);
+  const [requesterSubject, requesterAssignments] = await Promise.all([
+    getCallerPolicySubject(prisma, input.requestedBy, "dsar.export.request"),
+    listActiveRoleAssignments(prisma, input.requestedBy),
+  ]);
   const allowed = can(
-    { id: input.requestedBy },
+    requesterSubject,
     "dsar.export.request",
     { type: "dsar_request", scopeType: "global", scopeId: null, ownerId: input.personId },
     requesterAssignments,

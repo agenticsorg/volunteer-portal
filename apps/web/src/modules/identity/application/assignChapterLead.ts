@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { recordAuditEvent } from "@volunteer-portal/audit";
 import { can } from "@volunteer-portal/authz";
 import { ChapterNotFoundError, ForbiddenActionError, NotAnActiveChapterLeadError } from "../domain/errors";
+import { getCallerPolicySubject } from "./getCallerPolicySubject";
 import { listActiveRoleAssignments } from "./listActiveRoleAssignments";
 
 /**
@@ -26,9 +27,12 @@ export async function assignChapterLead(
   prisma: PrismaClient,
   input: AssignChapterLeadInput,
 ): Promise<void> {
-  const callerAssignments = await listActiveRoleAssignments(prisma, input.callerId);
+  const [callerSubject, callerAssignments] = await Promise.all([
+    getCallerPolicySubject(prisma, input.callerId, "chapter.assign_lead"),
+    listActiveRoleAssignments(prisma, input.callerId),
+  ]);
   const allowed = can(
-    { id: input.callerId },
+    callerSubject,
     "chapter.assign_lead",
     { type: "chapter", scopeType: "chapter", scopeId: input.chapterId },
     callerAssignments,

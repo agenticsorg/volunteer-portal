@@ -36,5 +36,18 @@ export function can(
   if (!rule) {
     throw new Error(`@volunteer-portal/authz: no policy rule defined for action "${action}".`);
   }
+
+  // Fail-closed on the CALLER's own status (ADR-0006 Negative Consequences:
+  // "checking a persons.status (active/suspended) flag inside the can()
+  // policy module on every privileged action, so a suspended account's
+  // still-valid JWT cannot execute privileged mutations even before the
+  // token expires"). Checked unconditionally, before any rule-specific
+  // logic runs, so no individual rule can accidentally forget it — an
+  // anonymized former org_admin's still-active role_assignments (if any
+  // survive) never even reach `rule.allow`.
+  if (subject.status !== "active") {
+    return false;
+  }
+
   return rule.allow(subject, resource, assignments);
 }

@@ -6,6 +6,7 @@ import {
   ForbiddenActionError,
   OpenDsarRequestExistsError,
   PersonAlreadyAnonymizedError,
+  grantRole,
   requestDataExport,
   requestErasure,
 } from "@/modules/identity";
@@ -148,9 +149,15 @@ describe("requestDataExport / requestErasure (integration)", () => {
       expect(dsarRow.status).toBe("completed");
 
       // Aggregate data other contexts might reference is preserved —
-      // never a cascade delete.
+      // never a cascade delete. It IS revoked, though (not left silently
+      // active): the row still exists (RoleAssignment invariant 3's
+      // never-delete rule), but revokedBy/revokedAt are now set, same
+      // shape revokeRole.ts itself produces.
       const roles = await prisma.roleAssignment.findMany({ where: { subjectId: person } });
       expect(roles).toHaveLength(1);
+      expect(roles[0].revokedAt).not.toBeNull();
+      expect(roles[0].revokedBy).toBe(person);
+      expect(roles[0].revokedAt?.toISOString()).toBe(anonymizedAt);
 
       const events = await prisma.identityDomainEvent.findMany({
         where: { aggregateType: "Person", aggregateId: person, eventType: "PersonAnonymized" },
@@ -167,12 +174,34 @@ describe("requestDataExport / requestErasure (integration)", () => {
     });
 
     it("cannot be requested a second time once already anonymized", async () => {
+      // Requested by a separate, still-active org_admin rather than the
+      // subject themselves: a *self*-requested second erasure is now
+      // caught earlier, by can()'s own caller-status check (the subject's
+      // own session is no longer "active" after the first call succeeds —
+      // see the dedicated caller-status test below) — this test isolates
+      // the DSARRequest/PersonAlreadyAnonymizedError business rule this
+      // use case's Pre-condition actually names, independent of that.
+      const admin = track((await createPerson(prisma)).id);
+      await grantRoleDirect(prisma, { subjectId: admin, role: "org_admin", grantedBy: admin });
+      const person = track((await createPerson(prisma)).id);
+      await requestErasure(prisma, { personId: person, requestedBy: admin });
+
+      await expect(
+        requestErasure(prisma, { personId: person, requestedBy: admin }),
+      ).rejects.toThrow(PersonAlreadyAnonymizedError);
+    });
+
+    it("a self-requested second erasure attempt is denied by can()'s caller-status check before it ever reaches the already-anonymized business rule", async () => {
       const person = track((await createPerson(prisma)).id);
       await requestErasure(prisma, { personId: person, requestedBy: person });
 
+      // The subject's own session is technically still "valid" (same
+      // callerId), but their Person.status is now anonymized — can()
+      // fails closed on that before any target-status business rule is
+      // even reached.
       await expect(
         requestErasure(prisma, { personId: person, requestedBy: person }),
-      ).rejects.toThrow(PersonAlreadyAnonymizedError);
+      ).rejects.toThrow(ForbiddenActionError);
     });
 
     it("rejects an erasure request for another person without org_admin", async () => {
@@ -193,6 +222,42 @@ describe("requestDataExport / requestErasure (integration)", () => {
       const dsarRow = await prisma.dSARRequest.findUniqueOrThrow({ where: { id: dsarId } });
       expect(dsarRow.requestedBy).toBe(admin);
       expect(dsarRow.status).toBe("completed");
+    });
+
+    // Reviewer-verified gap, closed two ways at once, proven together
+    // here: (1) can()'s new caller-status check denies a still-registered,
+    // still-session-valid but anonymized caller outright; (2) requestErasure
+    // itself now revokes the erased person's own role_assignments in the
+    // same transaction as the anonymization, so the stale grant doesn't
+    // linger even as inert data.
+    it("an anonymized former org_admin can no longer grant roles even with a still-valid session, and their role_assignments are revoked immediately after erasure", async () => {
+      const admin = track((await createPerson(prisma)).id);
+      await grantRoleDirect(prisma, { subjectId: admin, role: "org_admin", grantedBy: admin });
+      const subject = track((await createPerson(prisma)).id);
+
+      const { anonymizedAt } = await requestErasure(prisma, { personId: admin, requestedBy: admin });
+
+      // Revoked, not deleted, in the same transaction as the
+      // anonymization (RoleAssignment invariant 3).
+      const roleRow = await prisma.roleAssignment.findFirstOrThrow({
+        where: { subjectId: admin, role: "org_admin" },
+      });
+      expect(roleRow.revokedAt).not.toBeNull();
+      expect(roleRow.revokedBy).toBe(admin);
+      expect(roleRow.revokedAt?.toISOString()).toBe(anonymizedAt);
+
+      // Same callerId — simulating the "still cryptographically valid
+      // session" scenario (the JWT itself doesn't know the account was
+      // just anonymized) — grantRole must now be denied.
+      await expect(
+        grantRole(prisma, {
+          callerId: admin,
+          subjectId: subject,
+          role: "volunteer",
+          scopeType: "global",
+          scopeId: null,
+        }),
+      ).rejects.toThrow(ForbiddenActionError);
     });
 
     it("rejects a second erasure request while one is already open", async () => {

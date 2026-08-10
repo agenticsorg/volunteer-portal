@@ -3,6 +3,7 @@ import { newId } from "@volunteer-portal/ulid";
 import { recordAuditEvent } from "@volunteer-portal/audit";
 import { can } from "@volunteer-portal/authz";
 import { ForbiddenActionError, RoleAssignmentNotFoundError } from "../domain/errors";
+import { getCallerPolicySubject } from "./getCallerPolicySubject";
 import { listActiveRoleAssignments } from "./listActiveRoleAssignments";
 
 /**
@@ -29,9 +30,12 @@ export async function revokeRole(prisma: PrismaClient, input: RevokeRoleInput): 
     throw new RoleAssignmentNotFoundError(input.roleAssignmentId);
   }
 
-  const callerAssignments = await listActiveRoleAssignments(prisma, input.callerId);
+  const [callerSubject, callerAssignments] = await Promise.all([
+    getCallerPolicySubject(prisma, input.callerId, "role.revoke"),
+    listActiveRoleAssignments(prisma, input.callerId),
+  ]);
   const allowed = can(
-    { id: input.callerId },
+    callerSubject,
     "role.revoke",
     { type: "role_assignment", scopeType: target.scopeType, scopeId: target.scopeId, role: target.role },
     callerAssignments,

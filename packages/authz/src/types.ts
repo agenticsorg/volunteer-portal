@@ -20,9 +20,28 @@ export type Role =
 
 export type ScopeType = "global" | "chapter" | "team";
 
-/** The minimal shape `can()` needs to identify who is asking. */
+/**
+ * Mirrors `identity.persons.status` (`apps/web/prisma/schema.prisma`).
+ * `can()` fails closed on anything but `"active"` — see `PolicySubject`.
+ */
+export type PersonStatus = "active" | "deactivated" | "anonymized";
+
+/**
+ * The minimal shape `can()` needs to identify who is asking.
+ *
+ * `status` is required, not optional, deliberately: ADR-0006's Negative
+ * Consequences note ("JWT revocation latency") calls for checking a
+ * `persons.status` flag inside `can()` on every privileged action, so a
+ * suspended/anonymized account's still-valid session cannot execute
+ * privileged mutations before its JWT expires. Making the field required
+ * means a caller of `can()` that forgets to resolve and pass the caller's
+ * own status fails to *compile*, rather than silently defaulting to
+ * "allowed" at runtime — the fail-closed guarantee holds at the type
+ * level, not just the logic level.
+ */
 export interface PolicySubject {
   id: string;
+  status: PersonStatus;
 }
 
 /**

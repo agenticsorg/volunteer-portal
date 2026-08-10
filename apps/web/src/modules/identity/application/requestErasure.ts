@@ -8,6 +8,7 @@ import {
   PersonAlreadyAnonymizedError,
   PersonNotFoundError,
 } from "../domain/errors";
+import { getCallerPolicySubject } from "./getCallerPolicySubject";
 import { listActiveRoleAssignments } from "./listActiveRoleAssignments";
 
 /**
@@ -36,6 +37,18 @@ import { listActiveRoleAssignments } from "./listActiveRoleAssignments";
  * row is fast enough to do synchronously, and doing so keeps the
  * "erasure reaching `completed` implies anonymized" invariant trivially
  * true instead of racy.
+ *
+ * Also revokes, in the same transaction, every `RoleAssignment` the
+ * erased person still holds actively (`RoleAssignment` invariant 3:
+ * revocation is a state change — `revokedBy`/`revokedAt` set, never a
+ * delete — same pattern `revokeRole.ts` uses). Without this, an
+ * anonymized former `org_admin` would keep a fully active `org_admin`
+ * `RoleAssignment` indefinitely; `can()`'s own caller-status check
+ * (`packages/authz/src/can.ts`) already stops that account from
+ * *exercising* privileged authority once anonymized, but the stale
+ * active grant would still be visible to anyone reading this person's
+ * role history and would resurface as live authority again if that
+ * status check were ever weakened — belt-and-suspenders, not redundant.
  */
 export interface RequestErasureInput {
   personId: string;
@@ -57,9 +70,12 @@ export async function requestErasure(
   prisma: PrismaClient,
   input: RequestErasureInput,
 ): Promise<ErasureResult> {
-  const requesterAssignments = await listActiveRoleAssignments(prisma, input.requestedBy);
+  const [requesterSubject, requesterAssignments] = await Promise.all([
+    getCallerPolicySubject(prisma, input.requestedBy, "dsar.erasure.request"),
+    listActiveRoleAssignments(prisma, input.requestedBy),
+  ]);
   const allowed = can(
-    { id: input.requestedBy },
+    requesterSubject,
     "dsar.erasure.request",
     { type: "dsar_request", scopeType: "global", scopeId: null, ownerId: input.personId },
     requesterAssignments,
@@ -123,6 +139,16 @@ export async function requestErasure(
     await tx.dSARRequest.update({
       where: { id: dsarId },
       data: { status: "completed", completedAt: anonymizedAt },
+    });
+
+    // Revoke (never delete) every RoleAssignment this person still holds
+    // actively — same transaction, so a crash between the person update
+    // and this one can never leave a stale active grant behind (Person
+    // invariant 3's terminality and RoleAssignment invariant 3's
+    // never-delete rule both hold together or not at all).
+    await tx.roleAssignment.updateMany({
+      where: { subjectId: input.personId, revokedAt: null },
+      data: { revokedBy: input.requestedBy, revokedAt: anonymizedAt },
     });
 
     await tx.identityDomainEvent.create({

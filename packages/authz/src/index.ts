@@ -3,6 +3,7 @@ export { hasRoleInScope, rules } from "./rules";
 export {
   ACTIONS,
   type Action,
+  type PersonStatus,
   type PolicySubject,
   type Resource,
   type Role,

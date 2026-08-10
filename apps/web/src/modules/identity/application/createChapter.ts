@@ -3,6 +3,7 @@ import { newId } from "@volunteer-portal/ulid";
 import { recordAuditEvent } from "@volunteer-portal/audit";
 import { can } from "@volunteer-portal/authz";
 import { ChapterSlugTakenError, ForbiddenActionError } from "../domain/errors";
+import { getCallerPolicySubject } from "./getCallerPolicySubject";
 import { listActiveRoleAssignments } from "./listActiveRoleAssignments";
 
 /**
@@ -33,9 +34,12 @@ export async function createChapter(
   prisma: PrismaClient,
   input: CreateChapterInput,
 ): Promise<CreatedChapter> {
-  const callerAssignments = await listActiveRoleAssignments(prisma, input.callerId);
+  const [callerSubject, callerAssignments] = await Promise.all([
+    getCallerPolicySubject(prisma, input.callerId, "chapter.create"),
+    listActiveRoleAssignments(prisma, input.callerId),
+  ]);
   const allowed = can(
-    { id: input.callerId },
+    callerSubject,
     "chapter.create",
     { type: "chapter", scopeType: "global", scopeId: null },
     callerAssignments,

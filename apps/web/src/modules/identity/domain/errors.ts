@@ -44,6 +44,27 @@ export class IncompleteGuardianConsentError extends Error {
 }
 
 /**
+ * Person invariant 2 (age gate), the under-16 branch: a supplied
+ * `dateOfBirth` computes to under 16 years old, and no (complete)
+ * `guardianConsent` was supplied in the same request. Distinct from
+ * `AgeGateError` (neither a DOB nor a 16+ attestation was supplied at
+ * all) and from `IncompleteGuardianConsentError` (guardian consent was
+ * supplied but missing a required field) — this is the case where a DOB
+ * was supplied, real date arithmetic says the registrant is under 16, and
+ * *no* guardian consent came with the request at all.
+ */
+export class GuardianConsentRequiredError extends Error {
+  constructor() {
+    super(
+      "The supplied date of birth indicates the registrant is under 16 — " +
+        "an accompanying guardian_consent (guardianName + guardianEmail) " +
+        "is required (identity-access.md Person invariant 2).",
+    );
+    this.name = "GuardianConsentRequiredError";
+  }
+}
+
+/**
  * A `can()` (ADR-0007) check denied the caller's requested action.
  * Thrown by every privileged use case in this module before it performs
  * any write — translated to `TRPCError({ code: "FORBIDDEN" })` at the

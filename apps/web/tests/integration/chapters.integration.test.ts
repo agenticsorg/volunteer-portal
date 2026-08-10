@@ -149,4 +149,57 @@ describe("createChapter / assignChapterLead (integration)", () => {
       assignChapterLead(prisma, { callerId: admin, chapterId, personId: notALead }),
     ).rejects.toThrow(NotAnActiveChapterLeadError);
   });
+
+  // Reviewer-verified gap: createChapter/assignChapterLead never checked
+  // the CALLER's own Person.status before calling can().
+  it("createChapter denies a caller whose own status is not active, even holding an active org_admin role_assignment", async () => {
+    const admin = trackPerson((await createPerson(prisma)).id);
+    await grantRoleDirect(prisma, { subjectId: admin, role: "org_admin", grantedBy: admin });
+    await prisma.person.update({ where: { id: admin }, data: { status: "deactivated" } });
+
+    await expect(
+      createChapter(prisma, {
+        callerId: admin,
+        name: "Should Not Exist",
+        slug: `should-not-exist-${admin.toLowerCase()}`,
+        city: "Nowhere",
+        region: null,
+        country: "Nowhere",
+        foundedAt: null,
+      }),
+    ).rejects.toThrow(ForbiddenActionError);
+  });
+
+  it("assignChapterLead denies a caller whose own status is not active", async () => {
+    const admin = trackPerson((await createPerson(prisma)).id);
+    const lead = trackPerson((await createPerson(prisma)).id);
+    await grantRoleDirect(prisma, { subjectId: admin, role: "org_admin", grantedBy: admin });
+
+    const { chapterId } = await createChapter(prisma, {
+      callerId: admin,
+      name: "Agentics Dublin",
+      slug: `agentics-dublin-${admin.toLowerCase()}`,
+      city: "Dublin",
+      region: null,
+      country: "Ireland",
+      foundedAt: null,
+    });
+    trackChapter(chapterId);
+    await grantRoleDirect(prisma, {
+      subjectId: lead,
+      role: "chapter_lead",
+      scopeType: "chapter",
+      scopeId: chapterId,
+      grantedBy: admin,
+    });
+
+    await prisma.person.update({
+      where: { id: admin },
+      data: { status: "anonymized", anonymizedAt: new Date() },
+    });
+
+    await expect(
+      assignChapterLead(prisma, { callerId: admin, chapterId, personId: lead }),
+    ).rejects.toThrow(ForbiddenActionError);
+  });
 });
