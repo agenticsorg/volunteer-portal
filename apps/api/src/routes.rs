@@ -5,18 +5,46 @@
 
 use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Redirect};
-use identity_access::{Availability, OAuthProvider, SqlxVolunteerRepository, Volunteer, VolunteerRepository};
+use axum::Json;
+use identity_access::{
+    Availability, OAuthProvider, SqlxVolunteerRepository, SqlxVolunteerSummaryQuery, Volunteer,
+    VolunteerRepository, VolunteerSummaryQuery,
+};
 use kernel::record_audit_events;
 use oauth2::{CsrfToken, PkceCodeVerifier};
 use serde::Deserialize;
 use tower_sessions::Session;
 
-use crate::auth::SESSION_VOLUNTEER_ID_KEY;
+use crate::auth::{AuthUser, SESSION_VOLUNTEER_ID_KEY};
+use crate::dto::CurrentUser;
 use crate::error::ApiError;
 use crate::state::AppState;
 
 const SESSION_OAUTH_CSRF_KEY: &str = "oauth_csrf_state";
 const SESSION_OAUTH_PKCE_KEY: &str = "oauth_pkce_verifier";
+
+/// The natural "session/auth" wire type ADR-0011's ts-rs pipeline needs
+/// an initial real example of — lets the frontend know who's logged in
+/// without exposing the full `Volunteer` aggregate.
+pub async fn me(
+    AuthUser(volunteer_id): AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<CurrentUser>, ApiError> {
+    let query = SqlxVolunteerSummaryQuery;
+    let mut tx = state
+        .db
+        .begin_scoped(volunteer_id.as_uuid())
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    let summary = query
+        .summary(&mut tx, volunteer_id)
+        .await
+        .map_err(|_| ApiError::Internal)?
+        .ok_or(ApiError::NotFound)?;
+    tx.commit().await.map_err(|_| ApiError::Internal)?;
+
+    Ok(Json(summary.into()))
+}
 
 pub async fn discord_login(State(state): State<AppState>, session: Session) -> impl IntoResponse {
     let (url, csrf_token, pkce_verifier) = state.discord_oauth.authorize_url();

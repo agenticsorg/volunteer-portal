@@ -5,6 +5,7 @@
 //! `Router`/`AppState` without spawning a real server.
 
 pub mod auth;
+pub mod dto;
 pub mod error;
 pub mod oauth;
 pub mod routes;
@@ -28,5 +29,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/auth/discord/login", get(routes::discord_login))
         .route("/auth/discord/callback", get(routes::discord_callback))
+        .route("/auth/me", get(routes::me))
         .with_state(state)
 }

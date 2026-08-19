@@ -73,3 +73,39 @@ jobs:
         env:
           SQLX_OFFLINE: "false"
         run: cargo test --workspace
+
+  frontend:
+    runs-on: ubuntu-latest
+    env:
+      # No live database needed: cargo test -p api (invoked by npm's
+      # prebuild hook, below) resolves sqlx queries from the checked-in
+      # offline cache.
+      SQLX_OFFLINE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      # ADR-0011's contract-drift mitigation: this regenerates
+      # apps/web/src/generated/*.ts from the current Rust DTOs (via
+      # npm's prebuild hook) before type-checking, so a Rust response
+      # type change that isn't reflected in frontend usage fails here.
+      - name: Build (regenerates API types, then type-checks)
+        working-directory: apps/web
+        run: npm run build
+
+      - name: Lint
+        working-directory: apps/web
+        run: npm run lint
