@@ -1,7 +1,11 @@
 use chrono::{DateTime, Utc};
-use kernel::{ActorId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent, ProjectId, VolunteerId};
+use kernel::{
+    ActorId, AssignmentId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent, ProjectId,
+    VolunteerId,
+};
 use uuid::Uuid;
 
+use crate::assignment::ParticipationMode;
 use crate::project::ProjectType;
 
 #[derive(Debug, Clone)]
@@ -166,5 +170,134 @@ impl AuditableEvent for ProjectClosed {
     }
     fn after(&self) -> Option<serde_json::Value> {
         Some(serde_json::json!({ "status": "closed" }))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AssignmentApplied {
+    pub assignment_id: AssignmentId,
+    pub volunteer_id: VolunteerId,
+    pub project_id: ProjectId,
+    pub participation_mode: ParticipationMode,
+    pub occurred_at: DateTime<Utc>,
+}
+
+impl DomainEvent for AssignmentApplied {
+    fn event_type(&self) -> &'static str {
+        "assignment_applied"
+    }
+    fn occurred_at(&self) -> DateTime<Utc> {
+        self.occurred_at
+    }
+    fn as_auditable(&self) -> Option<&dyn AuditableEvent> {
+        Some(self)
+    }
+}
+
+impl AuditableEvent for AssignmentApplied {
+    fn actor(&self) -> ActorId {
+        ActorId::Volunteer(self.volunteer_id)
+    }
+    fn action(&self) -> AuditAction {
+        AuditAction::Created
+    }
+    fn entity_type(&self) -> AuditEntityType {
+        AuditEntityType::Assignment
+    }
+    fn entity_id(&self) -> Uuid {
+        self.assignment_id.as_uuid()
+    }
+    fn before(&self) -> Option<serde_json::Value> {
+        None
+    }
+    fn after(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "project_id": self.project_id.to_string(),
+            "participation_mode": self.participation_mode.as_str(),
+        }))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AssignmentApproved {
+    pub assignment_id: AssignmentId,
+    pub decided_by: VolunteerId,
+    pub occurred_at: DateTime<Utc>,
+}
+
+impl DomainEvent for AssignmentApproved {
+    fn event_type(&self) -> &'static str {
+        "assignment_approved"
+    }
+    fn occurred_at(&self) -> DateTime<Utc> {
+        self.occurred_at
+    }
+    fn as_auditable(&self) -> Option<&dyn AuditableEvent> {
+        Some(self)
+    }
+}
+
+impl AuditableEvent for AssignmentApproved {
+    fn actor(&self) -> ActorId {
+        ActorId::Volunteer(self.decided_by)
+    }
+    fn action(&self) -> AuditAction {
+        AuditAction::Updated
+    }
+    fn entity_type(&self) -> AuditEntityType {
+        AuditEntityType::Assignment
+    }
+    fn entity_id(&self) -> Uuid {
+        self.assignment_id.as_uuid()
+    }
+    fn before(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({ "status": "applied" }))
+    }
+    fn after(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({ "status": "approved" }))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AssignmentRemoved {
+    pub assignment_id: AssignmentId,
+    pub decided_by: VolunteerId,
+    pub reason: Option<String>,
+    pub occurred_at: DateTime<Utc>,
+}
+
+impl DomainEvent for AssignmentRemoved {
+    fn event_type(&self) -> &'static str {
+        "assignment_removed"
+    }
+    fn occurred_at(&self) -> DateTime<Utc> {
+        self.occurred_at
+    }
+    fn as_auditable(&self) -> Option<&dyn AuditableEvent> {
+        Some(self)
+    }
+}
+
+impl AuditableEvent for AssignmentRemoved {
+    fn actor(&self) -> ActorId {
+        ActorId::Volunteer(self.decided_by)
+    }
+    // The row is soft-removed via `status`, not physically deleted, but
+    // the audit-log action is `Deleted` in the compliance sense --
+    // per projects-assignments.md's explicit framing.
+    fn action(&self) -> AuditAction {
+        AuditAction::Deleted
+    }
+    fn entity_type(&self) -> AuditEntityType {
+        AuditEntityType::Assignment
+    }
+    fn entity_id(&self) -> Uuid {
+        self.assignment_id.as_uuid()
+    }
+    fn before(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({ "status": "applied_or_approved" }))
+    }
+    fn after(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({ "status": "removed", "reason": self.reason }))
     }
 }

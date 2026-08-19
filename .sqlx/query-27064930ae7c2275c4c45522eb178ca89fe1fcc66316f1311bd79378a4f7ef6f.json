@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into assignment (id, volunteer_id, project_id, role, participation_mode,\n                                        status, applied_at, decided_by, decided_at, attended_at)\n               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n               on conflict (id) do update set\n                   status = excluded.status,\n                   decided_by = excluded.decided_by,\n                   decided_at = excluded.decided_at,\n                   attended_at = excluded.attended_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "27064930ae7c2275c4c45522eb178ca89fe1fcc66316f1311bd79378a4f7ef6f"
+}

@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, volunteer_id, project_id, role, participation_mode, status,\n                      applied_at as \"applied_at: chrono::DateTime<chrono::Utc>\",\n                      decided_by,\n                      decided_at as \"decided_at: chrono::DateTime<chrono::Utc>\",\n                      attended_at as \"attended_at: chrono::DateTime<chrono::Utc>\"\n               from assignment where id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "volunteer_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "participation_mode",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "applied_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "decided_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "decided_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "attended_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "559afd0652b06c8b456d65e1b5e0f4f27a973c715d847a085259ad4bcf924fce"
+}

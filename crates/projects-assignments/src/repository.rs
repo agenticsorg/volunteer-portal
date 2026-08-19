@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
-use kernel::{DomainEvent, Id, ProjectId, RepoError, Skill, VolunteerId};
+use kernel::{AssignmentId, DomainEvent, Id, ProjectId, RepoError, Skill, VolunteerId};
 use sqlx::{Postgres, Transaction};
 
+use crate::assignment::{Assignment, AssignmentStatus, ParticipationMode};
 use crate::project::{EventSchedule, LeadRole, Project, ProjectLead, ProjectStatus, ProjectType};
 
 /// Read model for directory browsing / roster listing -- deliberately
@@ -330,5 +331,202 @@ impl UpcomingEventOccurrencesQuery for SqlxProjectRepository {
         }
 
         Ok(occurrences)
+    }
+}
+
+#[async_trait]
+pub trait AssignmentRepository: Send + Sync {
+    async fn find_by_id(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        id: AssignmentId,
+    ) -> Result<Option<Assignment>, RepoError>;
+
+    /// Roster view (concept.md section 4).
+    async fn find_by_project(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        project_id: ProjectId,
+    ) -> Result<Vec<Assignment>, RepoError>;
+
+    async fn find_by_volunteer(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        volunteer_id: VolunteerId,
+    ) -> Result<Vec<Assignment>, RepoError>;
+
+    async fn save(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        assignment: &mut Assignment,
+    ) -> Result<Vec<Box<dyn DomainEvent>>, RepoError>;
+}
+
+pub struct SqlxAssignmentRepository;
+
+#[allow(clippy::too_many_arguments)]
+fn row_to_assignment(
+    id: uuid::Uuid,
+    volunteer_id: uuid::Uuid,
+    project_id: uuid::Uuid,
+    role: String,
+    participation_mode: String,
+    status: String,
+    applied_at: DateTime<Utc>,
+    decided_by: Option<uuid::Uuid>,
+    decided_at: Option<DateTime<Utc>>,
+    attended_at: Option<DateTime<Utc>>,
+) -> Assignment {
+    Assignment::from_persisted(
+        Id::from_uuid(id),
+        Id::from_uuid(volunteer_id),
+        Id::from_uuid(project_id),
+        role,
+        ParticipationMode::parse(&participation_mode)
+            .expect("participation_mode column must be valid"),
+        AssignmentStatus::parse(&status).expect("status column must be a valid AssignmentStatus"),
+        applied_at,
+        decided_by.map(Id::from_uuid),
+        decided_at,
+        attended_at,
+    )
+}
+
+#[async_trait]
+impl AssignmentRepository for SqlxAssignmentRepository {
+    async fn find_by_id(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        id: AssignmentId,
+    ) -> Result<Option<Assignment>, RepoError> {
+        let row = sqlx::query!(
+            r#"select id, volunteer_id, project_id, role, participation_mode, status,
+                      applied_at as "applied_at: chrono::DateTime<chrono::Utc>",
+                      decided_by,
+                      decided_at as "decided_at: chrono::DateTime<chrono::Utc>",
+                      attended_at as "attended_at: chrono::DateTime<chrono::Utc>"
+               from assignment where id = $1"#,
+            id.as_uuid()
+        )
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        Ok(row.map(|r| {
+            row_to_assignment(
+                r.id,
+                r.volunteer_id,
+                r.project_id,
+                r.role,
+                r.participation_mode,
+                r.status,
+                r.applied_at,
+                r.decided_by,
+                r.decided_at,
+                r.attended_at,
+            )
+        }))
+    }
+
+    async fn find_by_project(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        project_id: ProjectId,
+    ) -> Result<Vec<Assignment>, RepoError> {
+        let rows = sqlx::query!(
+            r#"select id, volunteer_id, project_id, role, participation_mode, status,
+                      applied_at as "applied_at: chrono::DateTime<chrono::Utc>",
+                      decided_by,
+                      decided_at as "decided_at: chrono::DateTime<chrono::Utc>",
+                      attended_at as "attended_at: chrono::DateTime<chrono::Utc>"
+               from assignment where project_id = $1"#,
+            project_id.as_uuid()
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                row_to_assignment(
+                    r.id,
+                    r.volunteer_id,
+                    r.project_id,
+                    r.role,
+                    r.participation_mode,
+                    r.status,
+                    r.applied_at,
+                    r.decided_by,
+                    r.decided_at,
+                    r.attended_at,
+                )
+            })
+            .collect())
+    }
+
+    async fn find_by_volunteer(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        volunteer_id: VolunteerId,
+    ) -> Result<Vec<Assignment>, RepoError> {
+        let rows = sqlx::query!(
+            r#"select id, volunteer_id, project_id, role, participation_mode, status,
+                      applied_at as "applied_at: chrono::DateTime<chrono::Utc>",
+                      decided_by,
+                      decided_at as "decided_at: chrono::DateTime<chrono::Utc>",
+                      attended_at as "attended_at: chrono::DateTime<chrono::Utc>"
+               from assignment where volunteer_id = $1"#,
+            volunteer_id.as_uuid()
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                row_to_assignment(
+                    r.id,
+                    r.volunteer_id,
+                    r.project_id,
+                    r.role,
+                    r.participation_mode,
+                    r.status,
+                    r.applied_at,
+                    r.decided_by,
+                    r.decided_at,
+                    r.attended_at,
+                )
+            })
+            .collect())
+    }
+
+    async fn save(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        assignment: &mut Assignment,
+    ) -> Result<Vec<Box<dyn DomainEvent>>, RepoError> {
+        sqlx::query!(
+            r#"insert into assignment (id, volunteer_id, project_id, role, participation_mode,
+                                        status, applied_at, decided_by, decided_at, attended_at)
+               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+               on conflict (id) do update set
+                   status = excluded.status,
+                   decided_by = excluded.decided_by,
+                   decided_at = excluded.decided_at,
+                   attended_at = excluded.attended_at"#,
+            assignment.id().as_uuid(),
+            assignment.volunteer_id().as_uuid(),
+            assignment.project_id().as_uuid(),
+            assignment.role(),
+            assignment.participation_mode().as_str(),
+            assignment.status().as_str(),
+            assignment.applied_at(),
+            assignment.decided_by().map(|id| id.as_uuid()),
+            assignment.decided_at(),
+            assignment.attended_at(),
+        )
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(assignment.take_events())
     }
 }
