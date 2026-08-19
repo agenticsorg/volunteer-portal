@@ -12,6 +12,7 @@
 //! isn't reflected in frontend usage fails to type-check there.
 
 use identity_access::VolunteerSummary;
+use projects_assignments::{Assignment, ProjectSummary};
 use serde::Serialize;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -32,6 +33,50 @@ impl From<VolunteerSummary> for CurrentUser {
             name: s.name,
             role: s.role.as_str().to_string(),
             status: s.status.as_str().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "ProjectSummary.ts")]
+pub struct ProjectSummaryDto {
+    pub id: Uuid,
+    pub name: String,
+    pub project_type: String,
+    pub status: String,
+}
+
+impl From<ProjectSummary> for ProjectSummaryDto {
+    fn from(s: ProjectSummary) -> Self {
+        Self {
+            id: s.id.as_uuid(),
+            name: s.name,
+            project_type: s.project_type.as_str().to_string(),
+            status: s.status.as_str().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "Assignment.ts")]
+pub struct AssignmentDto {
+    pub id: Uuid,
+    pub volunteer_id: Uuid,
+    pub project_id: Uuid,
+    pub role: String,
+    pub participation_mode: String,
+    pub status: String,
+}
+
+impl From<Assignment> for AssignmentDto {
+    fn from(a: Assignment) -> Self {
+        Self {
+            id: a.id().as_uuid(),
+            volunteer_id: a.volunteer_id().as_uuid(),
+            project_id: a.project_id().as_uuid(),
+            role: a.role().to_string(),
+            participation_mode: a.participation_mode().as_str().to_string(),
+            status: a.status().as_str().to_string(),
         }
     }
 }

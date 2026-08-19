@@ -1,6 +1,7 @@
 //! `apps/api`'s composition root: Axum router, auth extractors
 //! (ADR-0002), Discord/Google OAuth login and account linking
-//! (ADR-0007), onboarding and admin approval (Prompt 2.3), and the
+//! (ADR-0007), onboarding and admin approval (Prompt 2.3), project
+//! directory/apply/roster management (Prompt 3.3), and the
 //! framework-level audit wiring (ADR-0005). Exposed as a library (in
 //! addition to `main.rs`'s binary) so integration tests can build the
 //! same `Router`/`AppState` without spawning a real server.
@@ -11,6 +12,7 @@ pub mod dto;
 pub mod error;
 pub mod oauth;
 pub mod onboarding;
+pub mod projects;
 pub mod routes;
 pub mod session;
 pub mod state;
@@ -24,8 +26,8 @@ async fn health() -> &'static str {
     "ok"
 }
 
-/// The composition root. Full domain-route wiring beyond auth/onboarding
-/// (project/hours endpoints, etc.) is added by later prompts as each
+/// The composition root. Full domain-route wiring beyond auth/onboarding/
+/// projects (hours endpoints, etc.) is added by later prompts as each
 /// context's handlers are built.
 pub fn build_router(state: AppState) -> Router {
     Router::new()
@@ -44,6 +46,20 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/admin/volunteers/{id}/approve",
             post(onboarding::approve_volunteer),
+        )
+        .route(
+            "/projects",
+            get(projects::list_open_projects).post(projects::create_project),
+        )
+        .route("/projects/{project_id}/apply", post(projects::apply_to_project))
+        .route("/projects/{project_id}/roster", get(projects::get_roster))
+        .route(
+            "/projects/{project_id}/assignments/approve",
+            post(projects::approve_assignment),
+        )
+        .route(
+            "/projects/{project_id}/assignments/remove",
+            post(projects::remove_assignment),
         )
         .with_state(state)
 }

@@ -1,4 +1,4 @@
-# Manual accessibility testing — signup flow (Prompt 2.3)
+# Manual accessibility testing — signup flow (Prompt 2.3), project directory/apply/roster (Prompt 3.3)
 
 build-roadmap.md's Phase 2 exit criterion requires **both** automated and
 manual WCAG 2.1 AA testing on the signup flow, explicitly noting that
@@ -45,3 +45,31 @@ exist in the DOM).
 This file should be deleted (or its results merged into a broader Phase
 10 full-site audit record) once a human has actually performed this pass
 and any findings are fixed.
+
+## Project directory, apply flow, and lead roster (Prompt 3.3)
+
+**What's done:** automated axe-core testing
+(`src/components/project-directory.a11y.test.tsx`,
+`src/components/project-roster.a11y.test.tsx`) covers the skill-search
+directory, the per-project apply form, and the lead roster table
+(empty and populated states), plus label-association and accessible-name
+assertions for the roster's Approve/Remove actions (each button's
+accessible name identifies which applicant's role it acts on, e.g.
+"Approve Carpenter application", not just a bare "Approve" repeated once
+per row).
+
+**What's not done, and can't be done by an autonomous agent:** the same
+manual gap as above, applied to these three views specifically:
+
+1. **Keyboard only:** tab through the skill search → results → each
+   project's role field → apply button; on the roster page, tab through
+   the table and confirm each row's Approve/Remove buttons are reachable
+   and clearly distinguishable by focus order alone (not just visually by
+   row position).
+2. **Screen reader:** confirm the roster `<table>` is announced with its
+   caption and column headers (Role/Status/Actions) as a screen reader
+   navigates by table semantics, not just linearly; confirm each
+   Approve/Remove button's full accessible name (including the sr-only
+   applicant/role suffix) is what's actually announced, not truncated to
+   just "Approve"/"Remove"; confirm the `aria-live="polite"` search-error
+   and apply-error regions are announced.
