@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into project (id, name, description, type, needed_skills, status,\n                                     next_occurrence_at, recurrence_note, created_at)\n               values ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n               on conflict (id) do update set\n                   name = excluded.name,\n                   description = excluded.description,\n                   needed_skills = excluded.needed_skills,\n                   status = excluded.status,\n                   next_occurrence_at = excluded.next_occurrence_at,\n                   recurrence_note = excluded.recurrence_note",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "TextArray",
+        "Text",
+        "Timestamptz",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "336e3c805c30508c7fe20f60914293e4db72a1c2b29f8c812273bc9222d0ec2a"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "delete from project_lead where project_id = $1 and volunteer_id != all($2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8128f329f7426d7d5d0ec5a5b8ca567111ccfd6b409051fd3f1b3513aeff2a24"
+}

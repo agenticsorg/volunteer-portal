@@ -2194,8 +2194,11 @@ dependencies = [
  "identity-access",
  "kernel",
  "serde",
+ "serde_json",
  "sqlx",
+ "testcontainers-modules",
  "thiserror 2.0.20",
+ "tokio",
  "uuid",
 ]
 

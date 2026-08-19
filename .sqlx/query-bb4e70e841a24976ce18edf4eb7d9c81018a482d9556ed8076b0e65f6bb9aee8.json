@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select volunteer_id, role, assigned_at as \"assigned_at: chrono::DateTime<chrono::Utc>\"\n           from project_lead where project_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "volunteer_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "assigned_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "bb4e70e841a24976ce18edf4eb7d9c81018a482d9556ed8076b0e65f6bb9aee8"
+}

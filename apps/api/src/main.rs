@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use api::oauth::{RealDiscordOAuthClient, RealGoogleOAuthClient};
-use api::state::{AppState, StubLeadMembershipQuery};
+use api::state::AppState;
+use projects_assignments::SqlxProjectRepository;
 use sqlx::PgPool;
 use tower_sessions_sqlx_store_chrono::PostgresStore;
 
@@ -51,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState {
         db: kernel::ScopedDb::new(pool),
-        lead_membership: Arc::new(StubLeadMembershipQuery),
+        lead_membership: Arc::new(SqlxProjectRepository),
         discord_oauth: Arc::new(discord_oauth),
         google_oauth,
     };

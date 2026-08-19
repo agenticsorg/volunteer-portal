@@ -13,7 +13,8 @@ use std::sync::Arc;
 
 use api::auth::{AuthUser, SESSION_VOLUNTEER_ID_KEY};
 use api::oauth::{DiscordOAuthClient, DiscordUserInfo, OAuthError};
-use api::state::{AppState, StubLeadMembershipQuery};
+use api::state::AppState;
+use projects_assignments::SqlxProjectRepository;
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{Request, StatusCode};
@@ -114,7 +115,7 @@ async fn audit_framework_records_exactly_one_row_per_mutation() {
 
     let state = AppState {
         db: kernel::ScopedDb::new(app_pool),
-        lead_membership: Arc::new(StubLeadMembershipQuery),
+        lead_membership: Arc::new(SqlxProjectRepository),
         discord_oauth: Arc::new(UnusedDiscordOAuthClient),
         google_oauth: None,
     };
@@ -248,7 +249,7 @@ async fn unauthenticated_request_is_rejected_before_any_mutation() {
 
     let state = AppState {
         db: kernel::ScopedDb::new(app_pool),
-        lead_membership: Arc::new(StubLeadMembershipQuery),
+        lead_membership: Arc::new(SqlxProjectRepository),
         discord_oauth: Arc::new(UnusedDiscordOAuthClient),
         google_oauth: None,
     };

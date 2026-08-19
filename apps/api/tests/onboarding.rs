@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use api::oauth::{DiscordOAuthClient, DiscordUserInfo, GoogleOAuthClient, GoogleUserInfo, OAuthError};
-use api::state::{AppState, StubLeadMembershipQuery};
+use api::state::AppState;
+use projects_assignments::SqlxProjectRepository;
 use axum::body::Body;
 use axum::extract::Path;
 use axum::http::{Request, StatusCode};
@@ -94,7 +95,7 @@ async fn build_test_app(owner_pool: &PgPool, app_pool: PgPool, discord_user: Dis
 
     let state = AppState {
         db: kernel::ScopedDb::new(app_pool),
-        lead_membership: Arc::new(StubLeadMembershipQuery),
+        lead_membership: Arc::new(SqlxProjectRepository),
         discord_oauth: Arc::new(FakeDiscordOAuthClient { user: discord_user }),
         google_oauth: Some(Arc::new(UnusedGoogleOAuthClient)),
     };

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select volunteer_id from assignment\n                   where project_id = $1 and status = 'approved'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "volunteer_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "dc47bc0cb19d6d9db75a32ffdb466ba0e49c34e7bd9f01ecfb0c79dff9a71219"
+}

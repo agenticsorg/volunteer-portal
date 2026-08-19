@@ -14,3 +14,9 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
+serde_json.workspace = true
+
+[dev-dependencies]
+testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
+tokio.workspace = true
+uuid.workspace = true

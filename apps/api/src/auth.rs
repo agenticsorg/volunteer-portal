@@ -42,9 +42,9 @@ where
 
 /// Requires `AuthUser` and re-checks lead membership against the
 /// `project_id` path parameter via `LeadMembershipQuery`
-/// (`projects-assignments`'s `project_lead` table once Prompt 3.2 wires
-/// the real implementation — see `state::StubLeadMembershipQuery` until
-/// then). Composes on top of `AuthUser` rather than duplicating session
+/// (`projects-assignments`'s real `project_lead`-table-backed
+/// implementation, `SqlxProjectRepository`, wired in Prompt 3.1).
+/// Composes on top of `AuthUser` rather than duplicating session
 /// resolution, per ADR-0002's "extractors compose" design.
 pub struct LeadOf(pub ProjectId);
 

@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, name, description, type, needed_skills, status,\n                      next_occurrence_at as \"next_occurrence_at: chrono::DateTime<chrono::Utc>\",\n                      recurrence_note,\n                      created_at as \"created_at: chrono::DateTime<chrono::Utc>\"\n               from project where id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "needed_skills",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "next_occurrence_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "recurrence_note",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "51b6f0fe2d575fedecdc106d733b359373de8ed282d8357c727c1cd245bfcdfe"
+}
