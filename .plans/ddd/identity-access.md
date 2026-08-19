@@ -147,6 +147,34 @@ added alongside `link_additional_provider`, not a change to the default —
 this document's recommendation is that the manual path should remain
 available and be the default regardless of what the ADR ultimately adds.
 
+**Added — 2026-08-19** (Phase 2 architecture-consistency review, Prompt
+2.2 implementation): the two lookups every login attempt needs *before*
+resolving to an authenticated actor — "does an `OAuthLink` already exist
+for this `(provider, provider_user_id)`" and ADR-0007's collision check,
+"does a different, verified identity already own this email" — cannot go
+through the normal `identity_select` RLS policy, since that policy scopes
+visibility to `volunteer_id = current_actor_id()`, and by construction
+there is no legitimate `current_actor_id()` yet at this point in the
+flow. (Prompt 1.5's original Discord callback got this wrong: it scoped
+the pre-auth lookup to a freshly-generated random id, which made
+`identity_select`/`volunteer_select` invisible to it — silently breaking
+lookups for every *returning* volunteer, not just new signups. Fixed in
+Prompt 2.2 with a regression test.) `VolunteerRepository` exposes
+`find_by_oauth_identity` and `find_by_verified_identity_email`, backed by
+two `SECURITY DEFINER` SQL functions (migration
+`20260819000005_oauth_identity_lookup_functions.sql`) following the same
+narrow-return-shape, pinned-`search_path` pattern established for
+`current_actor_role()`/`is_lead_of_project()` — each returns only the
+`(volunteer_id[, provider])` the login flow needs, never a full `identity`
+or `Volunteer` row. This stays on `VolunteerRepository`/`identity-access`,
+not a separate or compliance-audit-adjacent port: identity resolution
+during authentication is squarely this context's own job per
+context-map.md's ownership table ("Volunteer identity, Discord/Google
+OAuth linkage... roles... onboarding agreements"), and the narrow return
+shape follows the same principle `VolunteerSummaryQuery` already
+establishes below for other contexts' access to `Volunteer` data — full
+aggregates never cross a boundary, pre-auth or not.
+
 ## Session: infrastructure, not a domain aggregate
 
 **Decision: `Session` is explicitly out of this context's domain model.**
@@ -208,10 +236,21 @@ pub trait VolunteerRepository: Send + Sync {
     ) -> Result<Option<Volunteer>, RepoError>;
 
     async fn save(
-        &self, tx: &mut Transaction<'_, Postgres>, volunteer: &Volunteer,
+        &self, tx: &mut Transaction<'_, Postgres>, volunteer: &mut Volunteer,
     ) -> Result<Vec<Box<dyn DomainEvent>>, RepoError>;
 }
 ```
+
+**Amended — 2026-08-19** (Phase 1 architecture-consistency review, Prompt
+1.3 implementation): `volunteer` is `&mut Volunteer`, not `&Volunteer` as
+originally written here. Draining `Volunteer`'s internal pending-events
+buffer (via `take_events(&mut self)`, see the "Domain events" section)
+requires a mutable borrow — `save()` cannot return the aggregate's
+recorded events under Rust's ownership rules with only a shared
+reference. This is a Rust-mechanics correction, not a change to any
+invariant or behavior; see context-map.md's matching amendment, which
+also flags that every other context file's `Repository::save` signature
+needs the same correction when implemented.
 
 As with every repository port in this model (see
 [projects-assignments.md](./projects-assignments.md) and

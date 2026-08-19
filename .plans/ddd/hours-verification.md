@@ -196,6 +196,20 @@ pub trait AssignmentSnapshotQuery: Send + Sync {
 }
 ```
 
+**Amended — 2026-08-19** (Phase 4 architecture-consistency review): the
+trait above is defined *in this crate* (`hours-verification`), not
+`projects-assignments` — `hours-verification` cannot depend on
+`projects-assignments`'s crate per context-map.md's acyclic dependency
+graph (they are siblings). "Implemented by `projects-assignments`" means
+the concrete `impl` is written in `apps/api` (the composition root, which
+may depend on both crates) and delegates to
+`projects_assignments::AssignmentRepository::find_by_id` /
+`Assignment::participation_mode()` — not a second, `hours-verification`-
+local SQL query reimplementing how to read `participation_mode` off the
+`assignment` table. See context-map.md's matching amendment under
+"Direct calls" for the full reasoning and why this matters specifically
+for `participation_mode`.
+
 Implemented by `projects-assignments`, injected here — this is the
 [context-map.md](./context-map.md) direct-call mechanism, chosen because
 `HourEntry::log`'s invariant must see live, correct `participation_mode`,
