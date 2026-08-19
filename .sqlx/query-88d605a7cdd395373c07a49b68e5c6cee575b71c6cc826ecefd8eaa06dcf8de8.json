@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select sum(hours) from hour_entry where volunteer_id = $1 and status = 'approved'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sum",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "88d605a7cdd395373c07a49b68e5c6cee575b71c6cc826ecefd8eaa06dcf8de8"
+}

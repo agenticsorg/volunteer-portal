@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select sum(he.hours) from hour_entry he\n               join assignment a on a.id = he.assignment_id\n               where a.project_id = $1 and he.status = 'approved'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sum",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "80198160285bc5ded436b246145264b4d0622995986169ac404a9795814fb0a4"
+}

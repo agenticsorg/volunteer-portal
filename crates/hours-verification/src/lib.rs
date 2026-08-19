@@ -15,6 +15,4 @@ pub use error::HourEntryError;
 pub use events::{HoursAdjusted, HoursApproved, HoursLogged, HoursRejected};
 pub use hour_entry::{Adjustment, HourEntry, HourEntryStatus};
 pub use hours::{DateRange, Hours};
-pub use repository::{
-    HourEntryRepository, SqlxAssignmentSnapshotQuery, SqlxHourEntryRepository,
-};
+pub use repository::{HourEntryRepository, HoursTotalsQuery, SqlxHourEntryRepository};

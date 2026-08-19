@@ -7,9 +7,11 @@
 //! same `Router`/`AppState` without spawning a real server.
 
 pub mod account_linking;
+pub mod assignment_snapshot_adapter;
 pub mod auth;
 pub mod dto;
 pub mod error;
+pub mod hours;
 pub mod oauth;
 pub mod onboarding;
 pub mod projects;
@@ -60,6 +62,22 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/projects/{project_id}/assignments/remove",
             post(projects::remove_assignment),
+        )
+        .route(
+            "/projects/{project_id}/hours/total",
+            get(hours::project_hours_total),
+        )
+        .route("/assignments/{assignment_id}/hours", post(hours::log_hours))
+        .route("/hours/pending", get(hours::list_pending_hours))
+        .route("/hours/approve", post(hours::bulk_approve_hours))
+        .route("/hours/{hour_entry_id}/reject", post(hours::reject_hours))
+        .route(
+            "/admin/hours/{hour_entry_id}/adjust",
+            post(hours::adjust_hours),
+        )
+        .route(
+            "/volunteers/{volunteer_id}/hours/total",
+            get(hours::volunteer_hours_total),
         )
         .with_state(state)
 }

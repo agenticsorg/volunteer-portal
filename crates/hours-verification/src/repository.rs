@@ -1,11 +1,8 @@
 use async_trait::async_trait;
-use kernel::{AssignmentId, DomainEvent, HourEntryId, Id, RepoError, VolunteerId};
+use kernel::{DomainEvent, HourEntryId, Id, ProjectId, RepoError, VolunteerId};
 use rust_decimal::Decimal;
 use sqlx::{Postgres, Transaction};
 
-use crate::assignment_snapshot::{
-    AssignmentSnapshot, AssignmentSnapshotQuery, AssignmentStatus, ParticipationMode,
-};
 use crate::hour_entry::{Adjustment, HourEntry, HourEntryStatus};
 use crate::hours::{DateRange, Hours};
 
@@ -251,39 +248,56 @@ impl HourEntryRepository for SqlxHourEntryRepository {
     }
 }
 
-/// Reads the shared `assignment` table directly rather than depending on
-/// `projects-assignments`'s Rust API -- context-map.md's acyclic
-/// dependency graph places `hours-verification` and `projects-
-/// assignments` as siblings (both depend on `kernel`/`identity-access`;
-/// neither on the other), so `ParticipationMode`/`AssignmentStatus` are
-/// this crate's own local read-model copies (`assignment_snapshot.rs`),
-/// translated here from the same Postgres columns
-/// `projects_assignments::Assignment` persists to and reads from.
-pub struct SqlxAssignmentSnapshotQuery;
-
+/// concept.md section 5: "cumulative totals per volunteer and per
+/// project." Sums `hours` (which already reflects the current,
+/// possibly-adjusted value -- `HourEntry::adjust` overwrites it, keeping
+/// `adjustment.previous_hours` as the historical record) across
+/// `approved` entries only, matching `find_approved_by_volunteer_and_range`'s
+/// same "approved only" scope.
 #[async_trait]
-impl AssignmentSnapshotQuery for SqlxAssignmentSnapshotQuery {
-    async fn snapshot(
+pub trait HoursTotalsQuery: Send + Sync {
+    async fn total_for_volunteer(
         &self,
         tx: &mut Transaction<'_, Postgres>,
-        id: AssignmentId,
-    ) -> Result<Option<AssignmentSnapshot>, RepoError> {
-        let row = sqlx::query!(
-            r#"select id, volunteer_id, project_id, participation_mode, status
-               from assignment where id = $1"#,
-            id.as_uuid()
-        )
-        .fetch_optional(&mut **tx)
-        .await?;
+        volunteer_id: VolunteerId,
+    ) -> Result<Decimal, RepoError>;
 
-        Ok(row.map(|r| AssignmentSnapshot {
-            assignment_id: Id::from_uuid(r.id),
-            volunteer_id: Id::from_uuid(r.volunteer_id),
-            project_id: Id::from_uuid(r.project_id),
-            participation_mode: ParticipationMode::parse(&r.participation_mode)
-                .expect("participation_mode column must be a valid ParticipationMode"),
-            status: AssignmentStatus::parse(&r.status)
-                .expect("status column must be a valid AssignmentStatus"),
-        }))
+    async fn total_for_project(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        project_id: ProjectId,
+    ) -> Result<Decimal, RepoError>;
+}
+
+#[async_trait]
+impl HoursTotalsQuery for SqlxHourEntryRepository {
+    async fn total_for_volunteer(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        volunteer_id: VolunteerId,
+    ) -> Result<Decimal, RepoError> {
+        let total: Option<Decimal> = sqlx::query_scalar!(
+            r#"select sum(hours) from hour_entry where volunteer_id = $1 and status = 'approved'"#,
+            volunteer_id.as_uuid()
+        )
+        .fetch_one(&mut **tx)
+        .await?;
+        Ok(total.unwrap_or(Decimal::ZERO))
+    }
+
+    async fn total_for_project(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        project_id: ProjectId,
+    ) -> Result<Decimal, RepoError> {
+        let total: Option<Decimal> = sqlx::query_scalar!(
+            r#"select sum(he.hours) from hour_entry he
+               join assignment a on a.id = he.assignment_id
+               where a.project_id = $1 and he.status = 'approved'"#,
+            project_id.as_uuid()
+        )
+        .fetch_one(&mut **tx)
+        .await?;
+        Ok(total.unwrap_or(Decimal::ZERO))
     }
 }

@@ -16,8 +16,3 @@ chrono = { workspace = true }
 rust_decimal = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
-
-[dev-dependencies]
-testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
-tokio.workspace = true
-uuid.workspace = true

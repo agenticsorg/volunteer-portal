@@ -96,6 +96,7 @@ async fn build_test_app(owner_pool: &PgPool, app_pool: PgPool, discord_user: Dis
     let state = AppState {
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(SqlxProjectRepository),
+        assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
         discord_oauth: Arc::new(FakeDiscordOAuthClient { user: discord_user }),
         google_oauth: Some(Arc::new(UnusedGoogleOAuthClient)),
     };

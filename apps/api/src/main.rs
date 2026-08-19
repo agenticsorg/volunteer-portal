@@ -53,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         db: kernel::ScopedDb::new(pool),
         lead_membership: Arc::new(SqlxProjectRepository),
+        assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
         discord_oauth: Arc::new(discord_oauth),
         google_oauth,
     };

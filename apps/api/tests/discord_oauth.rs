@@ -73,6 +73,7 @@ async fn build_test_app(
     let state = AppState {
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(SqlxProjectRepository),
+        assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
         discord_oauth: Arc::new(FakeDiscordOAuthClient { user: discord_user }),
         google_oauth: None,
     };
