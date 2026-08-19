@@ -133,6 +133,61 @@ staleness window — this is the same query the Axum `LeadOf` extractor
 call it directly where the extractor alone isn't enough (e.g. bulk-approve
 touching multiple projects at once).
 
+**Amended — 2026-08-19** (Phase 4 architecture-consistency review, raised
+while implementing Prompt 4.1's `AssignmentSnapshotQuery`): this section's
+own wording — "depends on that context's port... implemented by the
+owning context" — is ambiguous about *where the trait's Rust definition
+and its concrete `impl` block each live*, and the acyclic dependency graph
+above (`kernel ← identity-access ← { five siblings } ← apps/api`, "no
+other context-to-context edge is a compile-time dependency") makes one
+literal reading impossible: `hours-verification` cannot depend on
+`projects-assignments`'s crate to import a trait `projects-assignments`
+defines, since they are siblings with no edge between them. The same
+ambiguous phrasing appears in `hours-verification.md`'s
+`AssignmentSnapshotQuery` section ("implemented by `projects-assignments`,
+injected here") and `discord-integration.md`'s port list ("declared here
+and implemented by the owning contexts"). Resolved as the binding pattern
+for every port of this shape, project-wide:
+
+- **The trait is defined in the *consuming* context's crate** (e.g.
+  `AssignmentSnapshotQuery` lives in `hours-verification`, since that's
+  the crate whose domain logic needs the answer) — standard
+  ports-and-adapters/dependency-inversion: the consumer owns the
+  abstraction it depends on, not the provider.
+- **The concrete `impl` is written in `apps/api`**, the one place in the
+  graph allowed to depend on every leaf crate, and it **delegates to the
+  owning context's own repository/aggregate methods** (e.g. calls
+  `projects_assignments::AssignmentRepository::find_by_id` and reads
+  `Assignment::participation_mode()`/`status()`) rather than re-deriving
+  the same data with a second, independent SQL query and a second parse of
+  the same columns. This is not a stylistic preference: `participation_mode`
+  is exactly the value the amended-ADR-0006 design goes out of its way to
+  compute and parse in exactly one place (`projects-assignments`) so every
+  consumer inherits the correct value "by construction" rather than
+  re-deriving it — a second, hours-verification-local raw-SQL
+  reimplementation of "read `participation_mode` off the `assignment`
+  table" would quietly reintroduce the duplicated-logic risk that design
+  was specifically built to avoid, even though the two copies would query
+  the same table.
+- This still satisfies "implemented by the owning context" in the sense
+  that matters: the *behavior* — the actual query and parsing logic —
+  genuinely comes from the owning context's existing code, wrapped in a
+  thin `apps/api`-level adapter, not duplicated.
+- Precedent already in the codebase for the *other* valid shape: `LeadOf`'s
+  `LeadMembershipQuery` has both its trait definition and its concrete
+  `impl` inside `projects-assignments` (`impl LeadMembershipQuery for
+  SqlxProjectRepository`), which is fine because its only Rust-level
+  caller is `apps/api` itself (the `LeadOf` extractor) — `apps/api`
+  depending on `projects-assignments` directly is never a graph violation,
+  since `apps/api` sits above every leaf crate. The pattern above only
+  applies when the *consumer* of the port is a sibling domain crate, not
+  `apps/api` itself.
+
+This resolves Prompt 4.1's `AssignmentSnapshotQuery` question and should
+be followed without re-litigation for Phase 5's `ApprovedVolunteersQuery`/
+`ActiveProjectMembershipQuery` (`discord-integration.md`), which have the
+identical shape.
+
 ### 2. Domain events via a transactional outbox, for reactive/best-effort concerns
 
 Every mutating command handler that changes state in a way meaningful
@@ -243,6 +298,28 @@ transaction (`&mut Transaction<'_, Postgres>`) rather than acquiring its
 own connection, so no repository implementation can accidentally bypass
 the `SET LOCAL` wrapper by opening an unscoped connection. This is stated
 explicitly in each context file's repository trait shapes.
+
+**Amended — 2026-08-19** (Phase 1 architecture-consistency review, Prompt
+1.3): every `Repository::save(...)` signature in this document set was
+originally written as `aggregate: &Aggregate`. Prompt 1.3's Rust
+implementation found this does not compile against the documented
+"`save()` drains and returns the aggregate's pending domain events"
+behavior: draining a `Vec<Box<dyn DomainEvent>>` buffer owned by the
+aggregate (via a `take_events(&mut self)` method, per each context's
+"Domain events" section) requires a mutable borrow of the aggregate at
+the call site. This is a Rust ownership-mechanics gap in the original
+pseudocode-level signatures, not a domain-semantics decision — no
+business rule, invariant, or authorization boundary changes. **The
+correct, binding signature for every `Repository::save` in this document
+set is `aggregate: &mut Aggregate`, not `aggregate: &Aggregate`.**
+`identity-access.md` has been corrected to match the implemented code;
+`projects-assignments.md`, `hours-verification.md`,
+`discord-integration.md`'s `DiscordLinkRepository::save`, and
+`compliance-audit.md`'s `DataSubjectRequestRepository::save` still show
+the uncorrected `&Aggregate` form as of this writing and should be
+corrected the same way when their crates are implemented (Prompts 3.1,
+3.2, 4.1, 5.2, 10.2) rather than each phase independently rediscovering
+or resolving this differently.
 
 ## Files in this set
 
