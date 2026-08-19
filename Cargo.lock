@@ -1321,8 +1321,11 @@ dependencies = [
  "chrono",
  "kernel",
  "serde",
+ "serde_json",
  "sqlx",
+ "testcontainers-modules",
  "thiserror",
+ "tokio",
  "uuid",
 ]
 

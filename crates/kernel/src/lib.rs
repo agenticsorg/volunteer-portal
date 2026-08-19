@@ -8,6 +8,7 @@ mod db;
 mod error;
 mod events;
 mod id;
+mod skill;
 
 pub use db::ScopedDb;
 pub use error::RepoError;
@@ -16,3 +17,4 @@ pub use id::{
     AssignmentId, AssignmentMarker, DataSubjectRequestId, DataSubjectRequestMarker, HourEntryId,
     HourEntryMarker, Id, ProjectId, ProjectMarker, VolunteerId, VolunteerMarker,
 };
+pub use skill::{Skill, SkillError};

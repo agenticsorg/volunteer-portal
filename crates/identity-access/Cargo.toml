@@ -9,7 +9,12 @@ license.workspace = true
 kernel = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
+tokio.workspace = true

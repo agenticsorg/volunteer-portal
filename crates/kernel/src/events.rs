@@ -12,6 +12,17 @@ use crate::id::VolunteerId;
 pub trait DomainEvent: Send + Sync + 'static {
     fn event_type(&self) -> &'static str;
     fn occurred_at(&self) -> DateTime<Utc>;
+
+    /// Lets the `apps/api` scoped-transaction helper (ADR-0005) inspect a
+    /// `Box<dyn DomainEvent>` for the `AuditableEvent` trait. Rust's trait
+    /// objects support upcasting a subtrait to its supertrait, but not the
+    /// reverse ("does this `dyn DomainEvent` also implement
+    /// `AuditableEvent`") — every concrete event type that implements
+    /// `AuditableEvent` overrides this to return `Some(self)`; every other
+    /// event type keeps the default `None`.
+    fn as_auditable(&self) -> Option<&dyn AuditableEvent> {
+        None
+    }
 }
 
 /// A `DomainEvent` that is also a compliance record. Per ADR-0005 and

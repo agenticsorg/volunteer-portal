@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into volunteer (\n                   id, name, email, discord_id, timezone, skills, availability,\n                   status, role, code_of_conduct_accepted_at, ip_agreement_accepted_at,\n                   age_attestation_confirmed_at, created_at\n               )\n               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)\n               on conflict (id) do update set\n                   name = excluded.name,\n                   email = excluded.email,\n                   discord_id = excluded.discord_id,\n                   timezone = excluded.timezone,\n                   skills = excluded.skills,\n                   availability = excluded.availability,\n                   status = excluded.status,\n                   role = excluded.role,\n                   code_of_conduct_accepted_at = excluded.code_of_conduct_accepted_at,\n                   ip_agreement_accepted_at = excluded.ip_agreement_accepted_at,\n                   age_attestation_confirmed_at = excluded.age_attestation_confirmed_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a03883b824347454b5279ba257f566fe110f20c1776b61f3147e5181f63c4c72"
+}

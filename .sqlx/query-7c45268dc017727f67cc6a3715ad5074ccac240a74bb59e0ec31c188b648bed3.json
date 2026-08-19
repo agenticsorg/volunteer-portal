@@ -1,0 +1,94 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, name, email, discord_id, timezone, skills, availability,\n                      status, role, code_of_conduct_accepted_at, ip_agreement_accepted_at,\n                      age_attestation_confirmed_at, created_at\n               from volunteer where lower(email) = lower($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "discord_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "timezone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "skills",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 6,
+        "name": "availability",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "code_of_conduct_accepted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "ip_agreement_accepted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "age_attestation_confirmed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "7c45268dc017727f67cc6a3715ad5074ccac240a74bb59e0ec31c188b648bed3"
+}

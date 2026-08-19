@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into identity (volunteer_id, provider, provider_user_id, email, email_verified, linked_at)\n                   values ($1, $2, $3, $4, $5, $6)\n                   on conflict (provider, provider_user_id) do nothing",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "642031b1290ddb7a0dab604dde45e7c586b81d0cee1e219525a1cab054618a47"
+}
