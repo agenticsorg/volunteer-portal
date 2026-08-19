@@ -41,4 +41,5 @@ impl LeadMembershipQuery for StubLeadMembershipQuery {
 pub struct AppState {
     pub db: ScopedDb,
     pub lead_membership: Arc<dyn LeadMembershipQuery>,
+    pub discord_oauth: Arc<dyn crate::oauth::DiscordOAuthClient>,
 }

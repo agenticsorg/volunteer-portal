@@ -12,6 +12,7 @@
 use std::sync::Arc;
 
 use api::auth::{AuthUser, SESSION_VOLUNTEER_ID_KEY};
+use api::oauth::{DiscordOAuthClient, DiscordUserInfo, OAuthError};
 use api::state::{AppState, StubLeadMembershipQuery};
 use axum::body::Body;
 use axum::extract::{Path, State};
@@ -70,6 +71,27 @@ async fn test_approve(
     (StatusCode::OK, written.to_string())
 }
 
+/// This test suite never exercises OAuth routes — every method here
+/// would only be reached by a bug in routing.
+struct UnusedDiscordOAuthClient;
+
+#[async_trait::async_trait]
+impl DiscordOAuthClient for UnusedDiscordOAuthClient {
+    fn authorize_url(&self) -> (oauth2::url::Url, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
+        unimplemented!("not exercised by the audit-wiring test suite")
+    }
+    async fn exchange_code(
+        &self,
+        _code: String,
+        _pkce_verifier: oauth2::PkceCodeVerifier,
+    ) -> Result<String, OAuthError> {
+        unimplemented!("not exercised by the audit-wiring test suite")
+    }
+    async fn fetch_user(&self, _access_token: &str) -> Result<DiscordUserInfo, OAuthError> {
+        unimplemented!("not exercised by the audit-wiring test suite")
+    }
+}
+
 fn first_cookie_pair(set_cookie: &str) -> String {
     set_cookie.split(';').next().unwrap().to_string()
 }
@@ -93,6 +115,7 @@ async fn audit_framework_records_exactly_one_row_per_mutation() {
     let state = AppState {
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(StubLeadMembershipQuery),
+        discord_oauth: Arc::new(UnusedDiscordOAuthClient),
     };
 
     let router = Router::new()
@@ -225,6 +248,7 @@ async fn unauthenticated_request_is_rejected_before_any_mutation() {
     let state = AppState {
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(StubLeadMembershipQuery),
+        discord_oauth: Arc::new(UnusedDiscordOAuthClient),
     };
 
     let router = Router::new()

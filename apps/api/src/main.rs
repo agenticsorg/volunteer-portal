@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
+use api::oauth::RealDiscordOAuthClient;
 use api::state::{AppState, StubLeadMembershipQuery};
 use sqlx::PgPool;
-use tower_sessions::SessionManagerLayer;
 use tower_sessions_sqlx_store_chrono::PostgresStore;
 
 #[tokio::main]
@@ -16,11 +16,18 @@ async fn main() -> anyhow::Result<()> {
 
     let session_store = PostgresStore::new(pool.clone());
     session_store.migrate().await?;
-    let session_layer = SessionManagerLayer::new(session_store);
+    let session_layer = api::session::configure(session_store);
+
+    let discord_oauth = RealDiscordOAuthClient::new(
+        std::env::var("DISCORD_CLIENT_ID").expect("DISCORD_CLIENT_ID must be set"),
+        std::env::var("DISCORD_CLIENT_SECRET").expect("DISCORD_CLIENT_SECRET must be set"),
+        std::env::var("DISCORD_REDIRECT_URI").expect("DISCORD_REDIRECT_URI must be set"),
+    );
 
     let state = AppState {
         db: kernel::ScopedDb::new(pool),
         lead_membership: Arc::new(StubLeadMembershipQuery),
+        discord_oauth: Arc::new(discord_oauth),
     };
 
     let app = api::build_router(state).layer(session_layer);
