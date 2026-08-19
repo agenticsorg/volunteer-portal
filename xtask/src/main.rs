@@ -17,7 +17,7 @@ use std::process::ExitCode;
 use syn::visit::Visit;
 use syn::{FnArg, ItemFn, Pat, PatType, Type};
 
-const RECOGNIZED_EXTRACTORS: &[&str] = &["AuthUser", "LeadOf", "AdminUser"];
+const RECOGNIZED_EXTRACTORS: &[&str] = &["AuthUser", "LeadOf", "LeadOfOrAdmin", "AdminUser"];
 
 struct Violation {
     file: String,
@@ -129,7 +129,7 @@ fn main() -> ExitCode {
         println!("xtask check-handlers: OK — every Json-accepting handler names a recognized auth extractor");
         ExitCode::SUCCESS
     } else {
-        eprintln!("xtask check-handlers: FAILED — the following handlers accept a Json body but name no recognized extractor (AuthUser/LeadOf/AdminUser), per ADR-0002:");
+        eprintln!("xtask check-handlers: FAILED — the following handlers accept a Json body but name no recognized extractor (AuthUser/LeadOf/LeadOfOrAdmin/AdminUser), per ADR-0002:");
         for v in &violations {
             eprintln!("  {}:{} fn {}", v.file, v.line, v.function);
         }
@@ -171,6 +171,19 @@ mod tests {
         let src = r#"
             async fn approve_hours(
                 LeadOf(project_id): LeadOf,
+                Json(payload): Json<ApproveHoursRequest>,
+            ) -> Result<(), ()> {
+                Ok(())
+            }
+        "#;
+        assert!(check_source(src, "test").is_empty());
+    }
+
+    #[test]
+    fn does_not_flag_json_handler_with_lead_of_or_admin() {
+        let src = r#"
+            async fn approve_hours(
+                LeadOfOrAdmin(project_id): LeadOfOrAdmin,
                 Json(payload): Json<ApproveHoursRequest>,
             ) -> Result<(), ()> {
                 Ok(())

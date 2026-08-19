@@ -25,7 +25,7 @@ use serde::Deserialize;
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::auth::{AuthUser, LeadOf};
+use crate::auth::{ensure_scoped_to, AuthUser, LeadOfOrAdmin};
 use crate::dto::{AssignmentDto, ProjectSummaryDto};
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -194,10 +194,10 @@ pub async fn apply_to_project(
 }
 
 /// GET /projects/{project_id}/roster -- applicants and current roster,
-/// lead-scoped view (concept.md section 4).
+/// lead- or admin-scoped view (concept.md sections 2 and 4).
 pub async fn get_roster(
     AuthUser(caller_id): AuthUser,
-    LeadOf(project_id): LeadOf,
+    LeadOfOrAdmin(project_id): LeadOfOrAdmin,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AssignmentDto>>, ApiError> {
     let repo = SqlxAssignmentRepository;
@@ -226,7 +226,7 @@ pub struct AssignmentActionRequest {
 /// POST /projects/{project_id}/assignments/approve
 pub async fn approve_assignment(
     AuthUser(caller_id): AuthUser,
-    LeadOf(_project_id): LeadOf,
+    LeadOfOrAdmin(project_id): LeadOfOrAdmin,
     State(state): State<AppState>,
     Json(payload): Json<AssignmentActionRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -242,14 +242,12 @@ pub async fn approve_assignment(
         .map_err(|_| ApiError::Internal)?
         .ok_or(ApiError::NotFound)?;
 
-    // `LeadOf` already proved caller_id leads assignment's *path*
-    // project; this only makes sense if the assignment actually belongs
-    // to that project too (a crafted assignment_id from a different
-    // project must not be approvable just because the caller leads some
-    // *other* project).
-    if assignment.project_id() != _project_id {
-        return Err(ApiError::BadRequest);
-    }
+    // `LeadOfOrAdmin` already proved caller_id is authorized against the
+    // *path* project; this only makes sense if the assignment actually
+    // belongs to that project too (a crafted assignment_id from a
+    // different project must not be approvable just because the caller
+    // leads, or has admin scope over, some *other* project's action).
+    ensure_scoped_to(assignment.project_id(), project_id)?;
 
     assignment
         .approve(caller_id, true)
@@ -274,7 +272,7 @@ pub async fn approve_assignment(
 /// "two discrete events, not an in-place edit" design.
 pub async fn remove_assignment(
     AuthUser(caller_id): AuthUser,
-    LeadOf(project_id): LeadOf,
+    LeadOfOrAdmin(project_id): LeadOfOrAdmin,
     State(state): State<AppState>,
     Json(payload): Json<AssignmentActionRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -290,9 +288,7 @@ pub async fn remove_assignment(
         .map_err(|_| ApiError::Internal)?
         .ok_or(ApiError::NotFound)?;
 
-    if assignment.project_id() != project_id {
-        return Err(ApiError::BadRequest);
-    }
+    ensure_scoped_to(assignment.project_id(), project_id)?;
 
     assignment
         .remove(caller_id, true, payload.reason)

@@ -172,6 +172,17 @@ async fn promote_to_lead(app_pool: &PgPool, volunteer_id: uuid::Uuid) {
     tx.commit().await.unwrap();
 }
 
+async fn promote_to_admin(app_pool: &PgPool, volunteer_id: uuid::Uuid) {
+    let db = kernel::ScopedDb::new(app_pool.clone());
+    let repo = SqlxVolunteerRepository;
+    let id = kernel::Id::from_uuid(volunteer_id);
+    let mut tx = db.begin_scoped(volunteer_id).await.unwrap();
+    let mut volunteer = repo.find_by_id(&mut tx, id).await.unwrap().unwrap();
+    volunteer.change_role(Role::Admin, id).unwrap();
+    repo.save(&mut tx, &mut volunteer).await.unwrap();
+    tx.commit().await.unwrap();
+}
+
 async fn create_open_project(app: &axum::Router, lead_cookie: &str, skill: &str) -> uuid::Uuid {
     let body = json!({
         "name": "Trail Cleanup",
@@ -464,4 +475,124 @@ async fn volunteer_applies_then_lead_approve_and_remove_each_write_one_audit_log
         .await
         .unwrap();
     assert_eq!(status, "removed");
+}
+
+/// concept.md section 2's "Admins have global scope": an admin who is
+/// *not* personally a `project_lead` row of this project must still be
+/// able to view the roster and approve an application -- `LeadOfOrAdmin`
+/// exists specifically to close this gap (an architect review of Phase 3
+/// found `LeadOf` alone under-authorized admins relative to concept.md
+/// and the `assignment_select`/`assignment_update` RLS policies, which
+/// already grant `current_actor_role() = 'admin'` as an alternative to
+/// lead membership).
+#[tokio::test]
+async fn admin_without_lead_membership_can_view_and_approve_roster() {
+    let (_container, owner_pool, app_pool) = setup().await;
+    let app = build_test_app(
+        &owner_pool,
+        app_pool.clone(),
+        DiscordUserInfo {
+            id: "lead-for-admin-test".to_string(),
+            username: "lead".to_string(),
+            email: Some("lead-for-admin-test@example.org".to_string()),
+            verified: true,
+        },
+    )
+    .await;
+    let (lead_cookie, lead_id) = login(&app, &owner_pool, "lead-for-admin-test").await;
+    promote_to_lead(&app_pool, lead_id).await;
+    let project_id = create_open_project(&app, &lead_cookie, "Carpentry").await;
+
+    let applicant_app = build_test_app(
+        &owner_pool,
+        app_pool.clone(),
+        DiscordUserInfo {
+            id: "applicant-for-admin-test".to_string(),
+            username: "applicant".to_string(),
+            email: Some("applicant-for-admin-test@example.org".to_string()),
+            verified: true,
+        },
+    )
+    .await;
+    let (_unused, applicant_id) = login(&applicant_app, &owner_pool, "applicant-for-admin-test").await;
+    let applicant_cookie = test_login_as(&app, applicant_id).await;
+
+    let apply_body = json!({ "role": "Carpenter" });
+    let apply_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/projects/{project_id}/apply"))
+                .header("cookie", &applicant_cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(apply_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(apply_response.status(), StatusCode::CREATED);
+    let bytes = axum::body::to_bytes(apply_response.into_body(), usize::MAX).await.unwrap();
+    let assignment_id_str: String = serde_json::from_slice(&bytes).unwrap();
+    let assignment_id: uuid::Uuid = assignment_id_str.parse().unwrap();
+
+    // A third identity is an admin, but was never added to this
+    // project's `project_lead` table.
+    let admin_app = build_test_app(
+        &owner_pool,
+        app_pool.clone(),
+        DiscordUserInfo {
+            id: "admin-not-a-lead".to_string(),
+            username: "admin".to_string(),
+            email: Some("admin-not-a-lead@example.org".to_string()),
+            verified: true,
+        },
+    )
+    .await;
+    let (_unused, admin_id) = login(&admin_app, &owner_pool, "admin-not-a-lead").await;
+    promote_to_admin(&app_pool, admin_id).await;
+    let admin_cookie = test_login_as(&app, admin_id).await;
+
+    let roster_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/projects/{project_id}/roster"))
+                .header("cookie", &admin_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        roster_response.status(),
+        StatusCode::OK,
+        "an admin with no project_lead row must still be able to view the roster"
+    );
+
+    let approve_body = json!({ "assignment_id": assignment_id, "reason": null });
+    let approve_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/projects/{project_id}/assignments/approve"))
+                .header("cookie", &admin_cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(approve_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        approve_response.status(),
+        StatusCode::NO_CONTENT,
+        "an admin with no project_lead row must still be able to approve an assignment"
+    );
+
+    let status: String = sqlx::query_scalar("select status from assignment where id = $1")
+        .bind(assignment_id)
+        .fetch_one(&owner_pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "approved");
 }

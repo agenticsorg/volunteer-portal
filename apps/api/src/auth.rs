@@ -115,3 +115,77 @@ impl FromRequestParts<AppState> for AdminUser {
         Ok(AdminUser(volunteer_id))
     }
 }
+
+/// Composes `AuthUser` with "`LeadOf` this path's project, OR `AdminUser`
+/// (global scope)" — concept.md section 2's "Admins have global scope"
+/// combined with a project-scoped action. This is the same admin-or-lead
+/// shape the `assignment_select`/`assignment_update` RLS policies already
+/// encode at the database layer (Prompt 1.2), and the shape
+/// hours-verification.md specifies verbatim for hour-entry approval ("a
+/// lead of the entry's project... or an admin (global scope)"). `LeadOf`
+/// alone under-authorizes relative to both of those: an admin who isn't
+/// personally a `project_lead` row would otherwise be refused. Every
+/// project-scoped lead action should use this rather than bare `LeadOf`,
+/// unless a prompt has an explicit reason an admin must NOT be able to
+/// act (none currently do).
+pub struct LeadOfOrAdmin(pub ProjectId);
+
+impl FromRequestParts<AppState> for LeadOfOrAdmin {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let AuthUser(volunteer_id) = AuthUser::from_request_parts(parts, state).await?;
+        let Path(project_id) = Path::<Uuid>::from_request_parts(parts, state)
+            .await
+            .map_err(|_| ApiError::BadRequest)?;
+        let project_id: ProjectId = Id::from_uuid(project_id);
+
+        let mut tx = state
+            .db
+            .begin_scoped(volunteer_id.as_uuid())
+            .await
+            .map_err(|_| ApiError::Internal)?;
+        let is_lead = state
+            .lead_membership
+            .is_lead_of_project(&mut tx, volunteer_id, project_id)
+            .await
+            .map_err(|_| ApiError::Internal)?;
+        let is_admin = if is_lead {
+            false
+        } else {
+            let query = SqlxVolunteerSummaryQuery;
+            query
+                .summary(&mut tx, volunteer_id)
+                .await
+                .map_err(|_| ApiError::Internal)?
+                .is_some_and(|s| s.role == Role::Admin)
+        };
+        tx.commit().await.map_err(|_| ApiError::Internal)?;
+
+        if !is_lead && !is_admin {
+            return Err(ApiError::Forbidden);
+        }
+        Ok(LeadOfOrAdmin(project_id))
+    }
+}
+
+/// Defense-in-depth cross-check for a handler that authorizes against one
+/// path-carried id (via `LeadOf`/`LeadOfOrAdmin`) but then loads a second
+/// resource by an id carried in the request body (per `LeadOf`'s
+/// single-dynamic-segment limitation): confirms the loaded resource
+/// actually belongs to the authorized scope, so a crafted body id from a
+/// *different* project the caller doesn't lead can't be acted on just
+/// because the caller leads *some* project. Independently, RLS's own
+/// scoping already blocks most such reads at the row level (`find_by_id`
+/// simply returns `None`), but this check is what turns that into a clean
+/// `BadRequest` rather than leaning on an RLS-driven `NotFound` to
+/// accidentally do the right thing.
+pub fn ensure_scoped_to(loaded: ProjectId, authorized: ProjectId) -> Result<(), ApiError> {
+    if loaded != authorized {
+        return Err(ApiError::BadRequest);
+    }
+    Ok(())
+}
