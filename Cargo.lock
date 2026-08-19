@@ -1217,8 +1217,11 @@ dependencies = [
  "kernel",
  "rust_decimal",
  "serde",
+ "serde_json",
  "sqlx",
+ "testcontainers-modules",
  "thiserror 2.0.20",
+ "tokio",
  "uuid",
 ]
 

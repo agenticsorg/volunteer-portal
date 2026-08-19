@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into hour_entry (id, volunteer_id, assignment_id, date, hours, description,\n                                        status, approver_id, decided_at,\n                                        adjustment_adjusted_by, adjustment_previous_hours,\n                                        adjustment_reason, adjustment_adjusted_at)\n               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)\n               on conflict (id) do update set\n                   hours = excluded.hours,\n                   status = excluded.status,\n                   approver_id = excluded.approver_id,\n                   decided_at = excluded.decided_at,\n                   adjustment_adjusted_by = excluded.adjustment_adjusted_by,\n                   adjustment_previous_hours = excluded.adjustment_previous_hours,\n                   adjustment_reason = excluded.adjustment_reason,\n                   adjustment_adjusted_at = excluded.adjustment_adjusted_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Date",
+        "Numeric",
+        "Text",
+        "Text",
+        "Uuid",
+        "Timestamptz",
+        "Uuid",
+        "Numeric",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8510280d085bd5ff1d457a4bd7869069df8f20db10b7fca4278ac424dcc0a1f9"
+}

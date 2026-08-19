@@ -1,0 +1,94 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, volunteer_id, assignment_id, date, hours, description, status,\n                      approver_id,\n                      decided_at as \"decided_at: chrono::DateTime<chrono::Utc>\",\n                      adjustment_adjusted_by, adjustment_previous_hours, adjustment_reason,\n                      adjustment_adjusted_at as \"adjustment_adjusted_at: chrono::DateTime<chrono::Utc>\"\n               from hour_entry where id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "volunteer_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "assignment_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 4,
+        "name": "hours",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "approver_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "decided_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "adjustment_adjusted_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 10,
+        "name": "adjustment_previous_hours",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 11,
+        "name": "adjustment_reason",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "adjustment_adjusted_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "c7320e1ba2c9ec66878a4ed36d19312d273a010d1f3bba84129b7b49f77e1742"
+}
