@@ -121,6 +121,12 @@ pub struct Volunteer {
     timezone: String,
     skills: Vec<Skill>,
     availability: Availability,
+    /// ADR-0014's Phase 2 addition: self-reported country/region,
+    /// collected on the signup form so Phase 10's GDPR Art. 27
+    /// EU-volunteer-count monitoring trigger has data to check against.
+    /// Not required at OAuth signup time (Prompt 1.5) — set when the
+    /// volunteer completes onboarding (`complete_onboarding`, below).
+    country_region: Option<String>,
     status: VolunteerStatus,
     role: Role,
     agreements: Agreements,
@@ -141,6 +147,7 @@ impl std::fmt::Debug for Volunteer {
             .field("timezone", &self.timezone)
             .field("skills", &self.skills)
             .field("availability", &self.availability)
+            .field("country_region", &self.country_region)
             .field("status", &self.status)
             .field("role", &self.role)
             .field("agreements", &self.agreements)
@@ -222,6 +229,7 @@ impl Volunteer {
             timezone,
             skills,
             availability,
+            country_region: None,
             status: VolunteerStatus::PendingApproval,
             role: Role::Volunteer,
             agreements: Agreements::default(),
@@ -243,6 +251,7 @@ impl Volunteer {
         timezone: String,
         skills: Vec<Skill>,
         availability: Availability,
+        country_region: Option<String>,
         status: VolunteerStatus,
         role: Role,
         agreements: Agreements,
@@ -257,6 +266,7 @@ impl Volunteer {
             timezone,
             skills,
             availability,
+            country_region,
             status,
             role,
             agreements,
@@ -287,6 +297,9 @@ impl Volunteer {
     pub fn availability(&self) -> &Availability {
         &self.availability
     }
+    pub fn country_region(&self) -> Option<&str> {
+        self.country_region.as_deref()
+    }
     pub fn status(&self) -> VolunteerStatus {
         self.status
     }
@@ -308,6 +321,30 @@ impl Volunteer {
     /// domain event distinct from `VolunteerOnboarded` — the acceptances
     /// are part of that same signup action, not a separate command.
     pub fn record_agreements(&mut self, agreements: Agreements) {
+        self.agreements = agreements;
+    }
+
+    /// concept.md section 3's signup form, submitted as one action after
+    /// the initial OAuth round-trip (Prompt 1.5) has already created the
+    /// bare `Volunteer` row: profile fields plus all three agreement
+    /// acceptances together, in one submission — matching `Agreements`'
+    /// own "written once, together" design. Does not change `status`;
+    /// approval remains a separate, admin-only action (`approve`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn complete_onboarding(
+        &mut self,
+        name: String,
+        timezone: String,
+        skills: Vec<Skill>,
+        availability: Availability,
+        country_region: Option<String>,
+        agreements: Agreements,
+    ) {
+        self.name = name;
+        self.timezone = timezone;
+        self.skills = skills;
+        self.availability = availability;
+        self.country_region = country_region;
         self.agreements = agreements;
     }
 

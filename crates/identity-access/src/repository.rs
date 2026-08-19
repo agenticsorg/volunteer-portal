@@ -112,6 +112,7 @@ fn row_to_volunteer(
     timezone: String,
     skills: Vec<String>,
     availability: serde_json::Value,
+    country_region: Option<String>,
     status: String,
     role: String,
     code_of_conduct_accepted_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -131,6 +132,7 @@ fn row_to_volunteer(
             .filter_map(|s| Skill::new(s).ok())
             .collect(),
         Availability(availability),
+        country_region,
         VolunteerStatus::parse(&status).expect("status column must be a valid VolunteerStatus"),
         Role::parse(&role).expect("role column must be a valid Role"),
         Agreements {
@@ -152,6 +154,7 @@ impl VolunteerRepository for SqlxVolunteerRepository {
     ) -> Result<Option<Volunteer>, RepoError> {
         let row = sqlx::query!(
             r#"select id, name, email, discord_id, timezone, skills, availability,
+                      country_region,
                       status, role,
                       code_of_conduct_accepted_at as "code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>",
                       ip_agreement_accepted_at as "ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>",
@@ -173,6 +176,7 @@ impl VolunteerRepository for SqlxVolunteerRepository {
             row.timezone,
             row.skills,
             row.availability,
+            row.country_region,
             row.status,
             row.role,
             row.code_of_conduct_accepted_at,
@@ -190,6 +194,7 @@ impl VolunteerRepository for SqlxVolunteerRepository {
     ) -> Result<Option<Volunteer>, RepoError> {
         let row = sqlx::query!(
             r#"select id, name, email, discord_id, timezone, skills, availability,
+                      country_region,
                       status, role,
                       code_of_conduct_accepted_at as "code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>",
                       ip_agreement_accepted_at as "ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>",
@@ -212,6 +217,7 @@ impl VolunteerRepository for SqlxVolunteerRepository {
             row.timezone,
             row.skills,
             row.availability,
+            row.country_region,
             row.status,
             row.role,
             row.code_of_conduct_accepted_at,
@@ -229,6 +235,7 @@ impl VolunteerRepository for SqlxVolunteerRepository {
     ) -> Result<Option<Volunteer>, RepoError> {
         let row = sqlx::query!(
             r#"select id, name, email, discord_id, timezone, skills, availability,
+                      country_region,
                       status, role,
                       code_of_conduct_accepted_at as "code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>",
                       ip_agreement_accepted_at as "ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>",
@@ -251,6 +258,7 @@ impl VolunteerRepository for SqlxVolunteerRepository {
             row.timezone,
             row.skills,
             row.availability,
+            row.country_region,
             row.status,
             row.role,
             row.code_of_conduct_accepted_at,
@@ -313,11 +321,11 @@ impl VolunteerRepository for SqlxVolunteerRepository {
 
         sqlx::query!(
             r#"insert into volunteer (
-                   id, name, email, discord_id, timezone, skills, availability,
+                   id, name, email, discord_id, timezone, skills, availability, country_region,
                    status, role, code_of_conduct_accepted_at, ip_agreement_accepted_at,
                    age_attestation_confirmed_at, created_at
                )
-               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                on conflict (id) do update set
                    name = excluded.name,
                    email = excluded.email,
@@ -325,6 +333,7 @@ impl VolunteerRepository for SqlxVolunteerRepository {
                    timezone = excluded.timezone,
                    skills = excluded.skills,
                    availability = excluded.availability,
+                   country_region = excluded.country_region,
                    status = excluded.status,
                    role = excluded.role,
                    code_of_conduct_accepted_at = excluded.code_of_conduct_accepted_at,
@@ -337,6 +346,7 @@ impl VolunteerRepository for SqlxVolunteerRepository {
             volunteer.timezone(),
             &skills,
             volunteer.availability().0.clone(),
+            volunteer.country_region(),
             volunteer.status().as_str(),
             volunteer.role().as_str(),
             volunteer.agreements().code_of_conduct_accepted_at,

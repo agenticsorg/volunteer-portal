@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select id, name, email, discord_id, timezone, skills, availability,\n                      status, role,\n                      code_of_conduct_accepted_at as \"code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>\",\n                      ip_agreement_accepted_at as \"ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>\",\n                      age_attestation_confirmed_at as \"age_attestation_confirmed_at: chrono::DateTime<chrono::Utc>\",\n                      created_at as \"created_at: chrono::DateTime<chrono::Utc>\"\n               from volunteer where id = $1",
+  "query": "select id, name, email, discord_id, timezone, skills, availability,\n                      country_region,\n                      status, role,\n                      code_of_conduct_accepted_at as \"code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>\",\n                      ip_agreement_accepted_at as \"ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>\",\n                      age_attestation_confirmed_at as \"age_attestation_confirmed_at: chrono::DateTime<chrono::Utc>\",\n                      created_at as \"created_at: chrono::DateTime<chrono::Utc>\"\n               from volunteer where lower(email) = lower($1)",
   "describe": {
     "columns": [
       {
@@ -40,38 +40,43 @@
       },
       {
         "ordinal": 7,
-        "name": "status",
+        "name": "country_region",
         "type_info": "Text"
       },
       {
         "ordinal": 8,
-        "name": "role",
+        "name": "status",
         "type_info": "Text"
       },
       {
         "ordinal": 9,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
         "name": "code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "age_attestation_confirmed_at: chrono::DateTime<chrono::Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "created_at: chrono::DateTime<chrono::Utc>",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Text"
       ]
     },
     "nullable": [
@@ -82,6 +87,7 @@
       false,
       false,
       false,
+      true,
       false,
       false,
       true,
@@ -90,5 +96,5 @@
       false
     ]
   },
-  "hash": "4f7d263952e35b3d507d28e454187938c766811130dcd152b855063f33d35f88"
+  "hash": "2451890b9812c9e72205e3c092406d96a5f3c08020518dbb4f40c66c2d2e7925"
 }

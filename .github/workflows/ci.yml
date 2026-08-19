@@ -109,3 +109,12 @@ jobs:
       - name: Lint
         working-directory: apps/web
         run: npm run lint
+
+      # WCAG 2.1 AA, automated half (Prompt 2.3): axe-core against the
+      # signup form. Per build-roadmap.md, this covers ~30% of success
+      # criteria and is not a substitute for the required manual pass
+      # (keyboard-only navigation, a screen reader) -- see
+      # apps/web/MANUAL_ACCESSIBILITY_TESTING.md for that gap.
+      - name: Accessibility tests (axe-core)
+        working-directory: apps/web
+        run: npm test
