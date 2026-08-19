@@ -1,0 +1,25 @@
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+kernel = { workspace = true }
+identity-access = { workspace = true }
+projects-assignments = { workspace = true }
+hours-verification = { workspace = true }
+discord-integration = { workspace = true }
+notifications = { workspace = true }
+compliance-audit = { workspace = true }
+
+tokio = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+sqlx = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }

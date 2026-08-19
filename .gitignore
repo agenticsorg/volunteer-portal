@@ -15,3 +15,8 @@
 agentdb.rvf
 agentdb.rvf.lock
 ruvector.db
+
+# Rust
+/target/
+**/target/
+Cargo.lock.bak
