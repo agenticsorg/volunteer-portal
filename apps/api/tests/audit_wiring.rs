@@ -116,6 +116,7 @@ async fn audit_framework_records_exactly_one_row_per_mutation() {
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(StubLeadMembershipQuery),
         discord_oauth: Arc::new(UnusedDiscordOAuthClient),
+        google_oauth: None,
     };
 
     let router = Router::new()
@@ -249,6 +250,7 @@ async fn unauthenticated_request_is_rejected_before_any_mutation() {
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(StubLeadMembershipQuery),
         discord_oauth: Arc::new(UnusedDiscordOAuthClient),
+        google_oauth: None,
     };
 
     let router = Router::new()

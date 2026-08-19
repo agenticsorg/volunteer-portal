@@ -25,6 +25,50 @@ pub trait VolunteerRepository: Send + Sync {
         email: &str,
     ) -> Result<Option<Volunteer>, RepoError>;
 
+    /// Looks up a volunteer id by any linked `(provider, provider_user_id)`
+    /// pair, via the `identity` table — the general case
+    /// `find_by_discord_id` doesn't cover (Google has no dedicated
+    /// `volunteer` column). ADR-0007's login flow: "if no existing
+    /// `identity` row matches `(provider, provider_user_id)`" is this
+    /// exact lookup.
+    ///
+    /// Returns only the id, not the full aggregate: this is a **pre-auth**
+    /// lookup, called before the caller's transaction can be scoped as
+    /// the target volunteer's own id (self-access is what
+    /// `volunteer_select`'s RLS policy actually permits) — it is
+    /// implemented via a `SECURITY DEFINER` function precisely so it
+    /// works regardless of the calling transaction's actor. Once the
+    /// caller has the id, it opens a **new** `begin_scoped(id)`
+    /// transaction (self-access) to load the full `Volunteer` via
+    /// `find_by_id`, per ADR-0004 — this method must never attempt that
+    /// load itself on the caller-supplied transaction, which would
+    /// silently return `None` under RLS for any actor other than the
+    /// target volunteer.
+    async fn find_by_oauth_identity(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        provider: OAuthProvider,
+        provider_user_id: &str,
+    ) -> Result<Option<VolunteerId>, RepoError>;
+
+    /// ADR-0007's account-linking collision check: "the system checks
+    /// whether any existing volunteer has a *verified* identity with the
+    /// same email." Deliberately queries `identity.email`/
+    /// `identity.email_verified`, not `volunteer.email` — an identity's
+    /// email is a snapshot at link time and is what was actually proven
+    /// via the provider's own verification, independent of whatever
+    /// `volunteer.email` currently holds.
+    ///
+    /// Same pre-auth/RLS shape as `find_by_oauth_identity` above: returns
+    /// only the id and the provider of the colliding identity (exactly
+    /// what the caller needs for the "sign in with X" prompt), via a
+    /// `SECURITY DEFINER` function, never the full aggregate.
+    async fn find_by_verified_identity_email(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        email: &str,
+    ) -> Result<Option<(VolunteerId, OAuthProvider)>, RepoError>;
+
     async fn save(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -215,6 +259,49 @@ impl VolunteerRepository for SqlxVolunteerRepository {
             row.created_at,
             links,
         )))
+    }
+
+    async fn find_by_oauth_identity(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        provider: OAuthProvider,
+        provider_user_id: &str,
+    ) -> Result<Option<VolunteerId>, RepoError> {
+        // Via the SECURITY DEFINER find_volunteer_id_by_oauth_identity
+        // (Prompt 2.2's migration), not a direct `identity` table query
+        // — RLS on `identity` otherwise restricts visibility to the
+        // caller's own rows, which a pre-login lookup by definition
+        // cannot satisfy yet.
+        let volunteer_id: Option<uuid::Uuid> = sqlx::query_scalar!(
+            r#"select find_volunteer_id_by_oauth_identity($1, $2) as "volunteer_id: uuid::Uuid""#,
+            provider.as_str(),
+            provider_user_id
+        )
+        .fetch_one(&mut **tx)
+        .await?;
+
+        Ok(volunteer_id.map(Id::from_uuid))
+    }
+
+    async fn find_by_verified_identity_email(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        email: &str,
+    ) -> Result<Option<(VolunteerId, OAuthProvider)>, RepoError> {
+        let row = sqlx::query!(
+            r#"select volunteer_id as "volunteer_id!: uuid::Uuid", provider as "provider!"
+               from find_verified_identity_email_collision($1)"#,
+            email
+        )
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        Ok(row.map(|row| {
+            (
+                Id::from_uuid(row.volunteer_id),
+                OAuthProvider::parse(&row.provider).expect("provider column must be valid"),
+            )
+        }))
     }
 
     async fn save(

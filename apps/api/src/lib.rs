@@ -1,9 +1,10 @@
 //! `apps/api`'s composition root: Axum router, auth extractors
-//! (ADR-0002), Discord OAuth login (ADR-0007), and the framework-level
-//! audit wiring (ADR-0005). Exposed as a library (in addition to
-//! `main.rs`'s binary) so integration tests can build the same
-//! `Router`/`AppState` without spawning a real server.
+//! (ADR-0002), Discord/Google OAuth login and account linking
+//! (ADR-0007), and the framework-level audit wiring (ADR-0005). Exposed
+//! as a library (in addition to `main.rs`'s binary) so integration tests
+//! can build the same `Router`/`AppState` without spawning a real server.
 
+pub mod account_linking;
 pub mod auth;
 pub mod dto;
 pub mod error;
@@ -28,7 +29,11 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/auth/discord/login", get(routes::discord_login))
+        .route("/auth/discord/link", get(routes::discord_link))
         .route("/auth/discord/callback", get(routes::discord_callback))
+        .route("/auth/google/login", get(routes::google_login))
+        .route("/auth/google/link", get(routes::google_link))
+        .route("/auth/google/callback", get(routes::google_callback))
         .route("/auth/me", get(routes::me))
         .with_state(state)
 }

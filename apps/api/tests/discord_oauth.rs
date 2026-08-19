@@ -73,6 +73,7 @@ async fn build_test_app(
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(StubLeadMembershipQuery),
         discord_oauth: Arc::new(FakeDiscordOAuthClient { user: discord_user }),
+        google_oauth: None,
     };
 
     api::build_router(state).layer(session_layer)
@@ -209,6 +210,85 @@ async fn discord_callback_completes_round_trip_for_a_new_volunteer() {
     .await
     .unwrap();
     assert_eq!(audit_count, 1);
+}
+
+#[tokio::test]
+async fn returning_volunteer_logs_in_without_creating_a_duplicate() {
+    // Regression test: the pre-auth identity lookup
+    // (VolunteerRepository::find_by_oauth_identity) is necessarily run
+    // under an arbitrary "probe" actor's RLS scope, since the caller
+    // isn't authenticated as anyone yet. An earlier version of this
+    // lookup fetched the full Volunteer row on that same probe-scoped
+    // transaction, which RLS silently filtered to None for any actor
+    // other than the target volunteer -- making every *second* login
+    // attempt fall through to signup, hit the unique email/discord_id
+    // constraint, and 500. Fixed by returning only the id from the
+    // SECURITY DEFINER-backed lookup and loading the full aggregate (if
+    // ever needed) from a fresh transaction scoped as that id.
+    let container = Postgres::default().start().await.unwrap();
+    let host_port = container.get_host_port_ipv4(5432).await.unwrap();
+    let owner_url = format!("postgres://postgres:postgres@127.0.0.1:{host_port}/postgres");
+    let owner_pool = PgPool::connect(&owner_url).await.unwrap();
+    MIGRATOR.run(&owner_pool).await.unwrap();
+    let app_url =
+        format!("postgres://app_user:app_user_dev_password@127.0.0.1:{host_port}/postgres");
+    let app_pool = PgPool::connect(&app_url).await.unwrap();
+
+    let app = build_test_app(
+        &owner_pool,
+        app_pool,
+        DiscordUserInfo {
+            id: "discord-returning".to_string(),
+            username: "returning".to_string(),
+            email: Some("returning@example.org".to_string()),
+            verified: true,
+        },
+    )
+    .await;
+
+    for _ in 0..2 {
+        let login_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/discord/login")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let cookie = first_cookie_pair(
+            login_response
+                .headers()
+                .get("set-cookie")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        );
+        let callback_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/discord/callback?code=fake-code&state=fake-csrf-token")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(callback_response.status(), StatusCode::SEE_OTHER);
+    }
+
+    let volunteer_count: i64 = sqlx::query_scalar(
+        "select count(*) from volunteer where discord_id = 'discord-returning'",
+    )
+    .fetch_one(&owner_pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        volunteer_count, 1,
+        "a second login for the same Discord identity must not create a duplicate volunteer"
+    );
 }
 
 #[tokio::test]

@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select volunteer_id as \"volunteer_id!: uuid::Uuid\", provider as \"provider!\"\n               from find_verified_identity_email_collision($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "volunteer_id!: uuid::Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "provider!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "14592406a71e03f481dc1e6f00a428ed8eab9d272b27f11bc79ff6a0b5a4beba"
+}

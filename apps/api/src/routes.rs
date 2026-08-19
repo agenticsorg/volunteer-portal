@@ -1,20 +1,25 @@
-//! Prompt 1.5: Discord OAuth login round-trip. Google OAuth and the
-//! manual-linking flow are explicitly out of scope here (Prompt 2.2), per
-//! concept.md's "Discord primary, Google fallback" framing and the Phase
-//! 1 exit criterion covering only the Discord round-trip.
+//! Prompt 1.5 (Discord login round-trip) + Prompt 2.2 (Google OAuth and
+//! the manual account-linking flow, per ADR-0007). Both providers share
+//! the same account-linking policy logic (`crate::account_linking`), and
+//! both support two intents, tracked in the session across the redirect
+//! round-trip:
+//! - **login** (`/auth/{provider}/login`): unauthenticated, resolves to
+//!   an existing or newly-created volunteer, or an ADR-0007 collision.
+//! - **link** (`/auth/{provider}/link`): requires an existing session
+//!   (`AuthUser`), attaches a second provider identity to that same
+//!   volunteer — this is the *only* path `Volunteer::link_additional_provider`
+//!   is ever called from.
 
 use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Redirect};
 use axum::Json;
-use identity_access::{
-    Availability, OAuthProvider, SqlxVolunteerRepository, SqlxVolunteerSummaryQuery, Volunteer,
-    VolunteerRepository, VolunteerSummaryQuery,
-};
-use kernel::record_audit_events;
+use identity_access::{OAuthProvider, SqlxVolunteerSummaryQuery, VolunteerSummaryQuery};
 use oauth2::{CsrfToken, PkceCodeVerifier};
+use openidconnect::Nonce;
 use serde::Deserialize;
 use tower_sessions::Session;
 
+use crate::account_linking::{self, LoginResolution};
 use crate::auth::{AuthUser, SESSION_VOLUNTEER_ID_KEY};
 use crate::dto::CurrentUser;
 use crate::error::ApiError;
@@ -22,6 +27,11 @@ use crate::state::AppState;
 
 const SESSION_OAUTH_CSRF_KEY: &str = "oauth_csrf_state";
 const SESSION_OAUTH_PKCE_KEY: &str = "oauth_pkce_verifier";
+const SESSION_OAUTH_NONCE_KEY: &str = "oauth_nonce";
+const SESSION_OAUTH_INTENT_KEY: &str = "oauth_flow_intent";
+
+const INTENT_LOGIN: &str = "login";
+const INTENT_LINK: &str = "link";
 
 /// The natural "session/auth" wire type ADR-0011's ts-rs pipeline needs
 /// an initial real example of — lets the frontend know who's logged in
@@ -46,7 +56,29 @@ pub async fn me(
     Ok(Json(summary.into()))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CallbackQuery {
+    code: String,
+    state: String,
+}
+
+// --- Discord ---------------------------------------------------------
+
 pub async fn discord_login(State(state): State<AppState>, session: Session) -> impl IntoResponse {
+    start_discord_flow(state, session, INTENT_LOGIN).await
+}
+
+/// Requires an existing session: the caller is already signed in (via
+/// Google) and is explicitly attaching Discord as a second provider.
+pub async fn discord_link(
+    AuthUser(_): AuthUser,
+    State(state): State<AppState>,
+    session: Session,
+) -> impl IntoResponse {
+    start_discord_flow(state, session, INTENT_LINK).await
+}
+
+async fn start_discord_flow(state: AppState, session: Session, intent: &'static str) -> impl IntoResponse {
     let (url, csrf_token, pkce_verifier) = state.discord_oauth.authorize_url();
 
     session
@@ -57,14 +89,12 @@ pub async fn discord_login(State(state): State<AppState>, session: Session) -> i
         .insert(SESSION_OAUTH_PKCE_KEY, pkce_verifier.secret())
         .await
         .expect("session store must be reachable");
+    session
+        .insert(SESSION_OAUTH_INTENT_KEY, intent)
+        .await
+        .expect("session store must be reachable");
 
     Redirect::to(url.as_str())
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CallbackQuery {
-    code: String,
-    state: String,
 }
 
 pub async fn discord_callback(
@@ -91,6 +121,12 @@ pub async fn discord_callback(
         .map_err(|_| ApiError::Internal)?
         .ok_or(ApiError::Unauthorized)?;
 
+    let intent: String = session
+        .get(SESSION_OAUTH_INTENT_KEY)
+        .await
+        .map_err(|_| ApiError::Internal)?
+        .unwrap_or_else(|| INTENT_LOGIN.to_string());
+
     let access_token = state
         .discord_oauth
         .exchange_code(query.code, PkceCodeVerifier::new(pkce_verifier))
@@ -103,69 +139,180 @@ pub async fn discord_callback(
         .await
         .map_err(|_| ApiError::Internal)?;
 
-    let repo = SqlxVolunteerRepository;
-
-    // Look up by discord_id first, scoped as a synthetic actor equal to
-    // the volunteer we're either finding or about to create — see the
-    // signup branch below for why this is always a meaningful RLS actor,
-    // never an unscoped connection.
-    let probe_id = kernel::VolunteerId::new();
-    let mut tx = state
-        .db
-        .begin_scoped(probe_id.as_uuid())
-        .await
-        .map_err(|_| ApiError::Internal)?;
-    let existing = repo
-        .find_by_discord_id(&mut tx, &discord_user.id)
-        .await
-        .map_err(|_| ApiError::Internal)?;
-    tx.commit().await.map_err(|_| ApiError::Internal)?;
-
-    let volunteer_id = match existing {
-        Some(existing) => existing.id(),
-        None => {
-            let mut volunteer = Volunteer::signup(
-                discord_user.username.clone(),
-                discord_user
-                    .email
-                    .clone()
-                    .unwrap_or_else(|| format!("{}@discord.invalid", discord_user.id)),
-                "UTC".to_string(),
-                vec![],
-                Availability::empty(),
-                OAuthProvider::Discord,
-                discord_user.id.clone(),
-                discord_user
-                    .email
-                    .clone()
-                    .unwrap_or_else(|| format!("{}@discord.invalid", discord_user.id)),
-                discord_user.verified,
-            )
-            .map_err(|_| ApiError::BadRequest)?;
-            let id = volunteer.id();
-
-            // The new volunteer's own freshly-generated id is a
-            // meaningful RLS actor for this transaction (the
-            // volunteer_insert policy's WITH CHECK is `id =
-            // current_actor_id() or ... admin`) — there is no unscoped
-            // signup transaction anywhere in this codebase, per ADR-0004.
-            let mut tx = state
-                .db
-                .begin_scoped(id.as_uuid())
-                .await
-                .map_err(|_| ApiError::Internal)?;
-            let events = repo
-                .save(&mut tx, &mut volunteer)
-                .await
-                .map_err(|_| ApiError::Internal)?;
-            record_audit_events(&mut tx, &events)
-                .await
-                .map_err(|_| ApiError::Internal)?;
-            tx.commit().await.map_err(|_| ApiError::Internal)?;
-            id
+    let outcome = if intent == INTENT_LINK {
+        let confirming_id: uuid::Uuid = session
+            .get(SESSION_VOLUNTEER_ID_KEY)
+            .await
+            .map_err(|_| ApiError::Internal)?
+            .ok_or(ApiError::Unauthorized)?;
+        let confirming_id: kernel::VolunteerId = kernel::Id::from_uuid(confirming_id);
+        account_linking::complete_link(
+            &state,
+            confirming_id,
+            OAuthProvider::Discord,
+            discord_user.id.clone(),
+            discord_user
+                .email
+                .clone()
+                .unwrap_or_else(|| format!("{}@discord.invalid", discord_user.id)),
+            discord_user.verified,
+        )
+        .await?;
+        confirming_id
+    } else {
+        match account_linking::resolve_login(
+            &state,
+            OAuthProvider::Discord,
+            &discord_user.id,
+            discord_user.email.as_deref(),
+            discord_user.verified,
+            &discord_user.username,
+        )
+        .await?
+        {
+            LoginResolution::LoggedIn(id) => id,
+            LoginResolution::Collision { existing_provider } => {
+                return Err(ApiError::AccountExistsUnderOtherProvider {
+                    provider: existing_provider,
+                });
+            }
         }
     };
 
+    clear_oauth_flow_session(&session).await?;
+    session
+        .insert(SESSION_VOLUNTEER_ID_KEY, outcome.as_uuid())
+        .await
+        .map_err(|_| ApiError::Internal)?;
+
+    Ok(Redirect::to("/"))
+}
+
+// --- Google ------------------------------------------------------------
+
+pub async fn google_login(State(state): State<AppState>, session: Session) -> Result<impl IntoResponse, ApiError> {
+    start_google_flow(state, session, INTENT_LOGIN).await
+}
+
+pub async fn google_link(
+    AuthUser(_): AuthUser,
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<impl IntoResponse, ApiError> {
+    start_google_flow(state, session, INTENT_LINK).await
+}
+
+async fn start_google_flow(
+    state: AppState,
+    session: Session,
+    intent: &'static str,
+) -> Result<impl IntoResponse, ApiError> {
+    let Some(google_oauth) = state.google_oauth.as_ref() else {
+        return Err(ApiError::NotFound);
+    };
+    let (url, csrf_token, nonce) = google_oauth.authorize_url();
+
+    session
+        .insert(SESSION_OAUTH_CSRF_KEY, csrf_token.secret())
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    session
+        .insert(SESSION_OAUTH_NONCE_KEY, nonce.secret())
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    session
+        .insert(SESSION_OAUTH_INTENT_KEY, intent)
+        .await
+        .map_err(|_| ApiError::Internal)?;
+
+    Ok(Redirect::to(url.as_str()))
+}
+
+pub async fn google_callback(
+    State(state): State<AppState>,
+    session: Session,
+    Query(query): Query<CallbackQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    let Some(google_oauth) = state.google_oauth.as_ref() else {
+        return Err(ApiError::NotFound);
+    };
+
+    let expected_state: Option<String> = session
+        .get(SESSION_OAUTH_CSRF_KEY)
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    let expected_state = expected_state.ok_or(ApiError::Unauthorized)?;
+    if CsrfToken::new(query.state.clone()).secret() != &expected_state {
+        return Err(ApiError::Unauthorized);
+    }
+
+    let nonce: String = session
+        .get(SESSION_OAUTH_NONCE_KEY)
+        .await
+        .map_err(|_| ApiError::Internal)?
+        .ok_or(ApiError::Unauthorized)?;
+
+    let intent: String = session
+        .get(SESSION_OAUTH_INTENT_KEY)
+        .await
+        .map_err(|_| ApiError::Internal)?
+        .unwrap_or_else(|| INTENT_LOGIN.to_string());
+
+    let google_user = google_oauth
+        .exchange_code(query.code, Nonce::new(nonce))
+        .await
+        .map_err(|_| ApiError::Internal)?;
+
+    let outcome = if intent == INTENT_LINK {
+        let confirming_id: uuid::Uuid = session
+            .get(SESSION_VOLUNTEER_ID_KEY)
+            .await
+            .map_err(|_| ApiError::Internal)?
+            .ok_or(ApiError::Unauthorized)?;
+        let confirming_id: kernel::VolunteerId = kernel::Id::from_uuid(confirming_id);
+        account_linking::complete_link(
+            &state,
+            confirming_id,
+            OAuthProvider::Google,
+            google_user.subject.clone(),
+            google_user
+                .email
+                .clone()
+                .unwrap_or_else(|| format!("{}@google.invalid", google_user.subject)),
+            google_user.email_verified,
+        )
+        .await?;
+        confirming_id
+    } else {
+        match account_linking::resolve_login(
+            &state,
+            OAuthProvider::Google,
+            &google_user.subject,
+            google_user.email.as_deref(),
+            google_user.email_verified,
+            google_user.name.as_deref().unwrap_or("Google volunteer"),
+        )
+        .await?
+        {
+            LoginResolution::LoggedIn(id) => id,
+            LoginResolution::Collision { existing_provider } => {
+                return Err(ApiError::AccountExistsUnderOtherProvider {
+                    provider: existing_provider,
+                });
+            }
+        }
+    };
+
+    clear_oauth_flow_session(&session).await?;
+    session
+        .insert(SESSION_VOLUNTEER_ID_KEY, outcome.as_uuid())
+        .await
+        .map_err(|_| ApiError::Internal)?;
+
+    Ok(Redirect::to("/"))
+}
+
+async fn clear_oauth_flow_session(session: &Session) -> Result<(), ApiError> {
     session
         .remove::<String>(SESSION_OAUTH_CSRF_KEY)
         .await
@@ -175,9 +322,12 @@ pub async fn discord_callback(
         .await
         .map_err(|_| ApiError::Internal)?;
     session
-        .insert(SESSION_VOLUNTEER_ID_KEY, volunteer_id.as_uuid())
+        .remove::<String>(SESSION_OAUTH_NONCE_KEY)
         .await
         .map_err(|_| ApiError::Internal)?;
-
-    Ok(Redirect::to("/"))
+    session
+        .remove::<String>(SESSION_OAUTH_INTENT_KEY)
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    Ok(())
 }

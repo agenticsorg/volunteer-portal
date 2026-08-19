@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use api::oauth::RealDiscordOAuthClient;
+use api::oauth::{RealDiscordOAuthClient, RealGoogleOAuthClient};
 use api::state::{AppState, StubLeadMembershipQuery};
 use sqlx::PgPool;
 use tower_sessions_sqlx_store_chrono::PostgresStore;
@@ -24,10 +24,36 @@ async fn main() -> anyhow::Result<()> {
         std::env::var("DISCORD_REDIRECT_URI").expect("DISCORD_REDIRECT_URI must be set"),
     );
 
+    // Google is the ADR-0007 "fallback" provider — unlike Discord, its
+    // absence at startup isn't fatal (no credentials in this
+    // environment); the Google routes 404 until it's configured.
+    let google_oauth = match (
+        std::env::var("GOOGLE_CLIENT_ID"),
+        std::env::var("GOOGLE_CLIENT_SECRET"),
+        std::env::var("GOOGLE_REDIRECT_URI"),
+    ) {
+        (Ok(id), Ok(secret), Ok(redirect_uri)) => {
+            match RealGoogleOAuthClient::new(id, secret, redirect_uri).await {
+                Ok(client) => Some(Arc::new(client) as Arc<dyn api::oauth::GoogleOAuthClient>),
+                Err(err) => {
+                    tracing::warn!("Google OAuth client failed to initialize: {err}");
+                    None
+                }
+            }
+        }
+        _ => {
+            tracing::info!(
+                "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI not set; Google login disabled"
+            );
+            None
+        }
+    };
+
     let state = AppState {
         db: kernel::ScopedDb::new(pool),
         lead_membership: Arc::new(StubLeadMembershipQuery),
         discord_oauth: Arc::new(discord_oauth),
+        google_oauth,
     };
 
     let app = api::build_router(state).layer(session_layer);

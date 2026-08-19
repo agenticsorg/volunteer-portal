@@ -149,3 +149,129 @@ impl DiscordOAuthClient for RealDiscordOAuthClient {
         })
     }
 }
+
+// --- Google OIDC (Prompt 2.2, ADR-0007) -------------------------------
+
+use openidconnect::core::{CoreClient, CoreIdTokenClaims, CoreProviderMetadata};
+use openidconnect::{
+    AuthenticationFlow, ClientId as OidcClientId, ClientSecret as OidcClientSecret,
+    CsrfToken as OidcCsrfToken, IssuerUrl, Nonce, RedirectUrl as OidcRedirectUrl, Scope as OidcScope,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GoogleUserInfo {
+    pub subject: String,
+    pub email: Option<String>,
+    pub email_verified: bool,
+    pub name: Option<String>,
+}
+
+/// Mirrors `DiscordOAuthClient`'s shape. `nonce` (Google/OIDC's
+/// replay-protection value, checked against the ID token's own `nonce`
+/// claim during verification) plays the same session-persisted role PKCE
+/// plays for Discord's plain-OAuth2 flow.
+#[async_trait]
+pub trait GoogleOAuthClient: Send + Sync {
+    fn authorize_url(&self) -> (oauth2::url::Url, CsrfToken, Nonce);
+
+    /// Exchanges the code, verifies the returned ID token's signature
+    /// against Google's JWKS and its `aud`/`iss`/`exp`/`nonce` claims
+    /// (ADR-0007's named Phase 1/2 security-review priority — this is
+    /// the entire reason `openidconnect`, not a bare `oauth2` token
+    /// exchange, is used for Google), and returns the verified claims.
+    async fn exchange_code(&self, code: String, nonce: Nonce) -> Result<GoogleUserInfo, OAuthError>;
+}
+
+pub struct RealGoogleOAuthClient {
+    client: CoreClient<
+        oauth2::EndpointSet,
+        oauth2::EndpointNotSet,
+        oauth2::EndpointNotSet,
+        oauth2::EndpointNotSet,
+        oauth2::EndpointMaybeSet,
+        oauth2::EndpointMaybeSet,
+    >,
+    http_client: reqwest::Client,
+}
+
+impl RealGoogleOAuthClient {
+    /// Async because it performs OpenID Connect Discovery (fetching
+    /// Google's `.well-known/openid-configuration` document and its
+    /// JWKS) at construction time, once, at application startup — not
+    /// per-request.
+    pub async fn new(
+        client_id: String,
+        client_secret: String,
+        redirect_uri: String,
+    ) -> Result<Self, String> {
+        let http_client = reqwest::ClientBuilder::new()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let issuer_url = IssuerUrl::new("https://accounts.google.com".to_string())
+            .expect("static Google issuer URL must be valid");
+
+        let provider_metadata = CoreProviderMetadata::discover_async(issuer_url, &http_client)
+            .await
+            .map_err(|e| format!("Google OIDC discovery failed: {e}"))?;
+
+        let client = CoreClient::from_provider_metadata(
+            provider_metadata,
+            OidcClientId::new(client_id),
+            Some(OidcClientSecret::new(client_secret)),
+        )
+        .set_redirect_uri(
+            OidcRedirectUrl::new(redirect_uri).map_err(|e| e.to_string())?,
+        );
+
+        Ok(Self { client, http_client })
+    }
+}
+
+#[async_trait]
+impl GoogleOAuthClient for RealGoogleOAuthClient {
+    fn authorize_url(&self) -> (oauth2::url::Url, CsrfToken, Nonce) {
+        let (url, csrf_token, nonce) = self
+            .client
+            .authorize_url(
+                AuthenticationFlow::<openidconnect::core::CoreResponseType>::AuthorizationCode,
+                OidcCsrfToken::new_random,
+                Nonce::new_random,
+            )
+            .add_scope(OidcScope::new("email".to_string()))
+            .add_scope(OidcScope::new("profile".to_string()))
+            .url();
+        (url, csrf_token, nonce)
+    }
+
+    async fn exchange_code(&self, code: String, nonce: Nonce) -> Result<GoogleUserInfo, OAuthError> {
+        let token_response = self
+            .client
+            .exchange_code(openidconnect::AuthorizationCode::new(code))
+            .map_err(|e| OAuthError::TokenExchange(e.to_string()))?
+            .request_async(&self.http_client)
+            .await
+            .map_err(|e| OAuthError::TokenExchange(e.to_string()))?;
+
+        let id_token = token_response
+            .extra_fields()
+            .id_token()
+            .ok_or_else(|| OAuthError::TokenExchange("Google did not return an ID token".to_string()))?;
+
+        let verifier = self.client.id_token_verifier();
+        let claims: &CoreIdTokenClaims = id_token
+            .claims(&verifier, &nonce)
+            .map_err(|e| OAuthError::TokenExchange(format!("ID token verification failed: {e}")))?;
+
+        Ok(GoogleUserInfo {
+            subject: claims.subject().to_string(),
+            email: claims.email().map(|e| e.to_string()),
+            email_verified: claims.email_verified().unwrap_or(false),
+            name: claims
+                .name()
+                .and_then(|n| n.get(None))
+                .map(|n| n.to_string()),
+        })
+    }
+}
