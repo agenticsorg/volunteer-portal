@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select id, name, email, discord_id, timezone, skills, availability,\n                      status, role, code_of_conduct_accepted_at, ip_agreement_accepted_at,\n                      age_attestation_confirmed_at, created_at\n               from volunteer where lower(email) = lower($1)",
+  "query": "select id, name, email, discord_id, timezone, skills, availability,\n                      status, role,\n                      code_of_conduct_accepted_at as \"code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>\",\n                      ip_agreement_accepted_at as \"ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>\",\n                      age_attestation_confirmed_at as \"age_attestation_confirmed_at: chrono::DateTime<chrono::Utc>\",\n                      created_at as \"created_at: chrono::DateTime<chrono::Utc>\"\n               from volunteer where discord_id = $1",
   "describe": {
     "columns": [
       {
@@ -50,22 +50,22 @@
       },
       {
         "ordinal": 9,
-        "name": "code_of_conduct_accepted_at",
+        "name": "code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>",
         "type_info": "Timestamptz"
       },
       {
         "ordinal": 10,
-        "name": "ip_agreement_accepted_at",
+        "name": "ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>",
         "type_info": "Timestamptz"
       },
       {
         "ordinal": 11,
-        "name": "age_attestation_confirmed_at",
+        "name": "age_attestation_confirmed_at: chrono::DateTime<chrono::Utc>",
         "type_info": "Timestamptz"
       },
       {
         "ordinal": 12,
-        "name": "created_at",
+        "name": "created_at: chrono::DateTime<chrono::Utc>",
         "type_info": "Timestamptz"
       }
     ],
@@ -90,5 +90,5 @@
       false
     ]
   },
-  "hash": "7c45268dc017727f67cc6a3715ad5074ccac240a74bb59e0ec31c188b648bed3"
+  "hash": "1b30b9dbe453d934d379222da88c61346079abc7a94459dbabf3ab60542524ec"
 }

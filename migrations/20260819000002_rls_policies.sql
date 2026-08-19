@@ -69,9 +69,18 @@ create policy volunteer_select on volunteer
     for select
     using (id = current_actor_id() or current_actor_role() = 'admin');
 
+-- Note: this WITH CHECK is also evaluated for the upsert-style
+-- `INSERT ... ON CONFLICT (id) DO UPDATE` used by VolunteerRepository::save
+-- (Prompt 1.3) even when the conflict path is taken and no row is actually
+-- inserted — per Postgres's documented RLS behavior for ON CONFLICT DO
+-- UPDATE, the INSERT policy's WITH CHECK still applies to the final row.
+-- It must therefore match volunteer_update's WITH CHECK (self or admin),
+-- not just the narrower "self-signup" case, or an admin-driven update
+-- routed through the same upsert call is rejected here even though the
+-- UPDATE policy alone would have allowed it.
 create policy volunteer_insert on volunteer
     for insert
-    with check (id = current_actor_id());
+    with check (id = current_actor_id() or current_actor_role() = 'admin');
 
 create policy volunteer_update on volunteer
     for update

@@ -39,7 +39,8 @@ async fn load_oauth_links(
     volunteer_id: VolunteerId,
 ) -> Result<Vec<OAuthLink>, RepoError> {
     let rows = sqlx::query!(
-        r#"select provider, provider_user_id, email, email_verified, linked_at
+        r#"select provider, provider_user_id, email, email_verified,
+                  linked_at as "linked_at: chrono::DateTime<chrono::Utc>"
            from identity where volunteer_id = $1"#,
         volunteer_id.as_uuid()
     )
@@ -107,8 +108,11 @@ impl VolunteerRepository for SqlxVolunteerRepository {
     ) -> Result<Option<Volunteer>, RepoError> {
         let row = sqlx::query!(
             r#"select id, name, email, discord_id, timezone, skills, availability,
-                      status, role, code_of_conduct_accepted_at, ip_agreement_accepted_at,
-                      age_attestation_confirmed_at, created_at
+                      status, role,
+                      code_of_conduct_accepted_at as "code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>",
+                      ip_agreement_accepted_at as "ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>",
+                      age_attestation_confirmed_at as "age_attestation_confirmed_at: chrono::DateTime<chrono::Utc>",
+                      created_at as "created_at: chrono::DateTime<chrono::Utc>"
                from volunteer where id = $1"#,
             id.as_uuid()
         )
@@ -142,8 +146,11 @@ impl VolunteerRepository for SqlxVolunteerRepository {
     ) -> Result<Option<Volunteer>, RepoError> {
         let row = sqlx::query!(
             r#"select id, name, email, discord_id, timezone, skills, availability,
-                      status, role, code_of_conduct_accepted_at, ip_agreement_accepted_at,
-                      age_attestation_confirmed_at, created_at
+                      status, role,
+                      code_of_conduct_accepted_at as "code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>",
+                      ip_agreement_accepted_at as "ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>",
+                      age_attestation_confirmed_at as "age_attestation_confirmed_at: chrono::DateTime<chrono::Utc>",
+                      created_at as "created_at: chrono::DateTime<chrono::Utc>"
                from volunteer where discord_id = $1"#,
             discord_id
         )
@@ -178,8 +185,11 @@ impl VolunteerRepository for SqlxVolunteerRepository {
     ) -> Result<Option<Volunteer>, RepoError> {
         let row = sqlx::query!(
             r#"select id, name, email, discord_id, timezone, skills, availability,
-                      status, role, code_of_conduct_accepted_at, ip_agreement_accepted_at,
-                      age_attestation_confirmed_at, created_at
+                      status, role,
+                      code_of_conduct_accepted_at as "code_of_conduct_accepted_at: chrono::DateTime<chrono::Utc>",
+                      ip_agreement_accepted_at as "ip_agreement_accepted_at: chrono::DateTime<chrono::Utc>",
+                      age_attestation_confirmed_at as "age_attestation_confirmed_at: chrono::DateTime<chrono::Utc>",
+                      created_at as "created_at: chrono::DateTime<chrono::Utc>"
                from volunteer where lower(email) = lower($1)"#,
             email
         )

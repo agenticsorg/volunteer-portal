@@ -4,12 +4,14 @@
 //! `.plans/ddd/context-map.md`'s acyclic dependency graph, `kernel` itself
 //! depends on nothing in this workspace.
 
+mod audit;
 mod db;
 mod error;
 mod events;
 mod id;
 mod skill;
 
+pub use audit::record_audit_events;
 pub use db::ScopedDb;
 pub use error::RepoError;
 pub use events::{ActorId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent};

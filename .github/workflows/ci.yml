@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "rust/**"
+  pull_request:
+    branches:
+      - "rust/**"
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: volunteer_portal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/volunteer_portal
+      SQLX_OFFLINE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
+
+      # Phase 1 exit criterion: "schema migrations are reproducible from a
+      # clean database" — the postgres service above has never seen this
+      # schema.
+      - name: Run migrations against a clean database
+        run: sqlx migrate run
+
+      # Checked-in .sqlx cache must stay in sync with the actual queries
+      # (ADR-0004) — this fails loudly if a query changed without
+      # regenerating it.
+      - name: Verify offline SQLx query cache is up to date
+        env:
+          SQLX_OFFLINE: "false"
+        run: cargo sqlx prepare --workspace --check
+
+      - name: Build (offline, using the checked-in .sqlx cache)
+        run: cargo build --workspace
+
+      # ADR-0002's handler-extractor lint: every Json-accepting handler
+      # must name a recognized auth extractor.
+      - name: Handler-extractor lint (ADR-0002)
+        run: cargo run -p xtask -- check-handlers
+
+      - name: Clippy
+        run: cargo clippy --workspace --tests -- -D warnings
+
+      # Integration tests spin up their own disposable Postgres via
+      # testcontainers and run every RLS-protected query as the
+      # non-owner `app_user` role created by migration 0004 — never the
+      # migration-owner role — specifically to catch the RLS-bypass class
+      # ADR-0004 warns about.
+      - name: Test
+        env:
+          SQLX_OFFLINE: "false"
+        run: cargo test --workspace

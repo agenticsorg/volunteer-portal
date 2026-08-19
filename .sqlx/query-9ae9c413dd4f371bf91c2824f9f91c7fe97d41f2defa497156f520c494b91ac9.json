@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select provider, provider_user_id, email, email_verified, linked_at\n           from identity where volunteer_id = $1",
+  "query": "select provider, provider_user_id, email, email_verified,\n                  linked_at as \"linked_at: chrono::DateTime<chrono::Utc>\"\n           from identity where volunteer_id = $1",
   "describe": {
     "columns": [
       {
@@ -25,7 +25,7 @@
       },
       {
         "ordinal": 4,
-        "name": "linked_at",
+        "name": "linked_at: chrono::DateTime<chrono::Utc>",
         "type_info": "Timestamptz"
       }
     ],
@@ -42,5 +42,5 @@
       false
     ]
   },
-  "hash": "26498ed9bb518a3e8bc373803fe6d90654038f1b26dd6286db64160ceff120fd"
+  "hash": "9ae9c413dd4f371bf91c2824f9f91c7fe97d41f2defa497156f520c494b91ac9"
 }

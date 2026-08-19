@@ -9,6 +9,7 @@ members = [
     "crates/notifications",
     "crates/compliance-audit",
     "apps/api",
+    "xtask",
 ]
 
 [workspace.package]
