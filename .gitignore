@@ -1,0 +1,17 @@
+# Ruflo local secrets and runtime data
+.env
+.env.local
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+
+# Claude Code / ruflo local session and tooling state (not project source)
+.claude/
+.claude-flow/
+.agents/
+.swarm/
+.mcp.json
+agentdb.rvf
+agentdb.rvf.lock
+ruvector.db
