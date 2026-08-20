@@ -1,0 +1,31 @@
+# Volunteer Training Video Portal — Research Summary
+
+## 1. Video Hosting & Delivery Options
+
+**Self-hosted (PeerTube, Streama, etc.)**
+Open-source platforms like PeerTube use HLS plus optional WebTorrent P2P delivery, so popular videos partially offload bandwidth to viewers' browsers rather than collapsing a single server ([Fediview](https://fediview.com/articles/peertube-launch-decentralized-video-platform/)). Storage is the real cost driver — roughly 1–5 GB per hour of video depending on encoding ([Fediview](https://fediview.com/articles/peertube-launch-decentralized-video-platform/)) — and a full self-hosted streaming stack (server, bandwidth, CDN, security) typically runs **$20–$500/month** ([Bluehost](https://www.bluehost.com/blog/video-streaming-hosting/)). This buys full control (branding, data ownership, no per-view fees) but shifts ops burden (transcoding, storage scaling, security patching) onto volunteer/staff time — a real cost for a small nonprofit.
+
+**Managed streaming (Mux, Cloudflare Stream, Vimeo, Wistia)**
+These are usage-metered APIs with built-in transcoding, adaptive bitrate, and analytics. Cloudflare Stream charges **$1/1,000 min stored + $5/1,000 min delivered**, with no separate bandwidth fee; Mux charges **~$0.07/min encoding + $0.025/min delivery** but includes 100K free delivery minutes/month. For a 5,000-minute library at 50,000 delivered minutes/month (720p), Mux runs ~$52/mo vs. Cloudflare ~$75/mo ([buildmvpfast.com pricing comparison](https://www.buildmvpfast.com/api-costs/video); [PkgPulse](https://www.pkgpulse.com/guides/mux-vs-cloudflare-stream-vs-bunny-stream-video-cdn-2026)). Vimeo starts at $12/mo with a 2TB bandwidth cap ([swarmify.com](https://swarmify.com/blog/best-vimeo-alternatives/)) — simpler but less API-integrated. None of the sources found published nonprofit discount tiers; worth contacting vendors directly (Cloudflare, Vimeo, and Mux have historically offered nonprofit/startup pricing on request).
+
+**Unlisted YouTube embeds**
+Free, essentially unlimited bandwidth, automatic (if imperfect) captions, and zero maintenance ([swarmify.com](https://swarmify.com/blog/best-video-hosting-platforms/)). Tradeoffs: no real access control (unlisted links are shareable outside the org), YouTube branding/ads context, limited native progress-tracking/analytics integration into a custom LMS, and auto-captions alone don't meet WCAG accuracy expectations (see below).
+
+## 2. Core LMS Features to Plan For
+- **Course/module sequencing** with prerequisites and learning paths ([peoplemanagingpeople.com](https://peoplemanagingpeople.com/learning-development/learning-management-system-features/))
+- **Progress tracking & resume-where-left-off** — persistent playback position per learner is now considered baseline, not a stretch feature ([eleapsoftware.com](https://www.eleapsoftware.com/free-training-resources/learning-management-systems-need-know-choosing-lms/))
+- **Quizzes/knowledge checks** tied to module completion, plus **auto-generated completion certificates** (customizable design, optional expiration/renewal tracking) ([thirdrocktechkno.com](https://www.thirdrocktechkno.com/blog/top-30-lms-features-the-complete-learning-management-system-features-guide/))
+- **Captions/transcripts** — both an accessibility requirement and a search/UX feature (searchable transcript text improves library discoverability)
+- **Searchable video library** — tagging/categorization plus transcript-based full-text search
+
+## 3. Existing Open-Source LMS Platforms
+- **Moodle** — largest plugin ecosystem, runs on cheap LAMP/shared hosting, realistic for a small self-hosted org; actively maintained (security support through 2027) ([Selleo](https://selleo.com/blog/open-source-lms-comparison); [OpenEduCat](https://openeducat.org/comparisons/open-source-lms-comparison/))
+- **Open edX** — built for MOOC scale; 20+ containers, heavy Django/microservices stack — **too heavy** for a small volunteer-run project ([Selleo](https://selleo.com/blog/open-source-lms-comparison))
+- **Canvas (open-source core)** — AGPLv3 core exists but is the hardest of the three to self-operate independently; effectively steers toward paid SaaS ([Selleo](https://selleo.com/blog/open-source-lms-comparison))
+- **Lighter alternatives**: Chamilo, ILIAS, Frappe LMS — noted as better fits for lightweight, low-maintenance deployments than Moodle's full weight ([thefrontkit.com](https://thefrontkit.com/blogs/moodle-alternatives-2026); [raccoongang.com](https://raccoongang.com/blog/open-source-lms-everything-you-need-know/))
+
+## 4. Accessibility / Compliance
+WCAG 1.2.2 (Level A) requires captions on all prerecorded video; 1.2.4 (Level AA) extends this to live streams ([Clevercast](https://www.clevercast.com/wcag-accessibility-captions/)). Compliant captions must be synchronized, speaker-identified, and describe non-speech audio cues — **auto-generated captions alone (e.g., raw YouTube auto-captions) do not meet the accuracy bar** and need human review/correction ([TestParty](https://testparty.ai/blog/video-captioning-requirements)). Burned-in captions are discouraged in favor of true closed captions (toggleable, searchable) ([Cablecast](https://www.cablecast.tv/cablecast-blog/your-video-accessibility-cheat-sheet)).
+
+## Recommendation: Embed-first, upgrade later
+For a small, volunteer-run nonprofit, **start with unlisted YouTube (or Vimeo's low tier) embeds inside a lightweight LMS layer (Moodle or a simple custom progress-tracking wrapper)** rather than building self-hosted video infrastructure or committing to metered managed streaming. This minimizes upfront engineering and ops burden to near zero and costs nothing at low volume. Budget for human-corrected captions/transcripts from day one (compliance requirement, not optional). **Revisit Cloudflare Stream or Mux** once the org needs access control, richer analytics, or hits YouTube's practical ceiling (unlisted-link leakage, branding) — their usage-based pricing scales gracefully and avoids the self-hosting maintenance tax that a volunteer team is unlikely to sustain. Reserve full self-hosting (PeerTube) only if data sovereignty/control becomes a hard requirement, since it trades lower marginal cost for real, ongoing sysadmin responsibility.
