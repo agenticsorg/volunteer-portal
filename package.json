@@ -16,7 +16,10 @@
     "db:generate": "pnpm --filter web exec prisma generate",
     "db:migrate": "dotenv -e .env -- pnpm --filter web exec prisma migrate dev",
     "db:migrate:deploy": "dotenv -e .env -- pnpm --filter web exec prisma migrate deploy",
-    "db:studio": "dotenv -e .env -- pnpm --filter web exec prisma studio"
+    "db:studio": "dotenv -e .env -- pnpm --filter web exec prisma studio",
+    "worker:dev": "dotenv -e .env -- pnpm --filter worker dev",
+    "worker:start": "dotenv -e .env -- pnpm --filter worker start",
+    "outbox:example": "dotenv -e .env -- pnpm --filter @volunteer-portal/outbox example"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0"

@@ -18,3 +18,203 @@ datasource db {
   url      = env("DATABASE_URL")
   schemas  = ["identity", "volunteering", "training", "gamification", "community", "moderation", "notifications", "admin"]
 }
+
+// ---------------------------------------------------------------------------
+// Phase 1 — Event Backbone & Platform Audit Log
+// ---------------------------------------------------------------------------
+//
+// `<schema>.domain_events` — the standard transactional-outbox table shape
+// (ADR-0009), established once here as the model every bounded context
+// replicates in its own schema starting the next implementation phase. The
+// column set is intentionally the minimal shape needed for this phase's
+// outbox-drain worker (`audit_log_writer`): `id` (ULID, chronologically
+// sortable — ADR-0005), `aggregateType`, `aggregateId`, `eventType`,
+// `payload` (jsonb), `occurredAt`, `processedAt`, `attempts`. ADR-0009's own
+// sketch additionally shows `dispatched_at`/`last_error` and a companion
+// `domain_event_dispatches` table for the full multi-subscriber relay
+// mechanism — deliberately deferred: this phase only needs single-consumer
+// (`audit_log_writer`) drain semantics, and the fuller relay bookkeeping
+// lands with the first real subscriber-fan-out use case.
+//
+// Added for real, identically, to all eight schemas now (rather than once
+// per phase as each bounded context is built) because: (1) every context
+// needs this exact shape eventually per ADR-0009, so doing it eight times
+// later is pure repetition of this same migration step; (2) the
+// `audit_log_writer` job below is specified to drain *every* schema's
+// outbox, so having all eight tables live now lets this phase's own
+// verification exercise the real multi-schema drain path instead of a
+// single throwaway stand-in. Prisma has no schema-level "fragment"/mixin
+// mechanism, so the eight models below are intentionally identical copies —
+// keep them in sync by hand if this shape ever changes before every
+// bounded context has replaced its copy with real domain-specific event
+// handling.
+//
+// Each table also gets a partial index on `processed_at IS NULL`
+// (ADR-0009's own sketch) for efficient drain-worker polling. Prisma's
+// schema language has no partial-index syntax, so those indexes are added
+// by hand in the migration SQL only and intentionally have no `@@index`
+// counterpart here — same hand-authored-extra-DDL precedent as the Phase 0
+// baseline migration's `CREATE SCHEMA` statements.
+
+model IdentityDomainEvent {
+  id            String    @id
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+
+  @@map("domain_events")
+  @@schema("identity")
+}
+
+model VolunteeringDomainEvent {
+  id            String    @id
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+
+  @@map("domain_events")
+  @@schema("volunteering")
+}
+
+model TrainingDomainEvent {
+  id            String    @id
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+
+  @@map("domain_events")
+  @@schema("training")
+}
+
+model GamificationDomainEvent {
+  id            String    @id
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+
+  @@map("domain_events")
+  @@schema("gamification")
+}
+
+model CommunityDomainEvent {
+  id            String    @id
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+
+  @@map("domain_events")
+  @@schema("community")
+}
+
+model ModerationDomainEvent {
+  id            String    @id
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+
+  @@map("domain_events")
+  @@schema("moderation")
+}
+
+model NotificationsDomainEvent {
+  id            String    @id
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+
+  @@map("domain_events")
+  @@schema("notifications")
+}
+
+model AdminDomainEvent {
+  id            String    @id
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+
+  @@map("domain_events")
+  @@schema("admin")
+}
+
+// `admin.audit_log` — the single, platform-wide privileged-action audit
+// trail (ADR-0014 §4; docs/ddd/admin-reporting.md "There is one audit log,
+// not two"). Populated exclusively by the `audit_log_writer` graphile-worker
+// job draining every schema's `domain_events` outbox for `audit: true`
+// payloads — never written to directly by application code, which is what
+// makes the insert-only enforcement below meaningful.
+//
+// `ip_address inet` (ADR-0014's exact column spec) is modeled as
+// `Unsupported("inet")` because Prisma has no native `inet` scalar. Two
+// consequences worth knowing, both verified while building this
+// migration:
+//   - It's excluded from the generated Prisma Client's typed
+//     create/update API (Prisma's documented behavior for `Unsupported`
+//     fields) — not populated by this phase's drain worker anyway
+//     (request-context capture is a later concern), and any future write
+//     to it goes through `$executeRaw`.
+//   - Prisma's migration-diff engine cannot fully round-trip
+//     `Unsupported()` native types: every future `prisma migrate dev` /
+//     `migrate diff` against this table proposes a no-op
+//     `ALTER COLUMN ip_address SET DATA TYPE inet` (same type, no data
+//     loss — confirmed by reproducing it, not a guess). This is the
+//     lesser of two evils versus the alternative (leaving the column
+//     unmodeled entirely), which was also tried and instead produces a
+//     recurring `DROP COLUMN ip_address` proposal — genuinely dangerous
+//     if a future `migrate dev` run is accepted without reading the diff.
+//     Always read what `migrate dev`/`migrate diff` proposes against
+//     `admin.audit_log` before applying; a same-type no-op ALTER is
+//     expected and safe to accept, a DROP COLUMN never is.
+model AuditLog {
+  id           String               @id
+  occurredAt   DateTime             @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  actorId      String?              @map("actor_id")
+  actorType    String               @map("actor_type")
+  action       String
+  resourceType String               @map("resource_type")
+  resourceId   String               @map("resource_id")
+  scopeType    String?              @map("scope_type")
+  scopeId      String?              @map("scope_id")
+  beforeState  Json?                @map("before_state")
+  afterState   Json?                @map("after_state")
+  metadata     Json                 @default("{}")
+  ipAddress    Unsupported("inet")? @map("ip_address")
+  requestId    String?              @map("request_id")
+
+  @@index([actorId, occurredAt(sort: Desc)], map: "audit_log_actor_idx")
+  @@index([resourceType, resourceId, occurredAt(sort: Desc)], map: "audit_log_resource_idx")
+  @@index([action, occurredAt(sort: Desc)], map: "audit_log_action_idx")
+  @@map("audit_log")
+  @@schema("admin")
+}
