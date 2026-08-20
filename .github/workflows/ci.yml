@@ -165,9 +165,13 @@ jobs:
         run: pnpm --filter web exec prisma migrate deploy
       - name: Verify all eight bounded-context schemas were created
         run: |
+          # psql's URI parser doesn't understand Prisma's `?schema=` query
+          # parameter (it's a Prisma-only extension, not real libpq syntax),
+          # so strip it before handing DATABASE_URL to psql.
+          psql_url="${DATABASE_URL%%\?*}"
           missing=0
           for schema in identity volunteering training gamification community moderation notifications admin; do
-            found=$(psql "$DATABASE_URL" -tAc "SELECT 1 FROM information_schema.schemata WHERE schema_name = '${schema}'")
+            found=$(psql "$psql_url" -tAc "SELECT 1 FROM information_schema.schemata WHERE schema_name = '${schema}'")
             if [ "$found" != "1" ]; then
               echo "::error::Missing expected schema: ${schema}"
               missing=1
