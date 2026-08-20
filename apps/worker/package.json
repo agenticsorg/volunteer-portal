@@ -1,0 +1,22 @@
+{
+  "name": "worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Long-lived graphile-worker process (ADR-0009) — background job runner for domain-event delivery. Phase 1 registers the audit_log_writer consumer (ADR-0014 §4); later phases add the per-schema relay/dispatch tasks and DSAR/retention jobs on the same runner.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@volunteer-portal/audit": "workspace:*",
+    "graphile-worker": "0.17.3",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "8.11.10",
+    "tsx": "4.23.12",
+    "typescript": "^5"
+  }
+}

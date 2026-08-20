@@ -1,11 +1,14 @@
 name: CI
 
-# Required status checks on PRs into main (ADR-0015). This is Phase 0's
-# subset of the full four-layer pyramid: lint, typecheck, unit tests,
-# e2e-smoke, and a Prisma migration dry-run against a disposable shadow
-# database. Integration and contract-test jobs (testcontainers,
-# OpenAPI-response validation) land once a bounded context has real
-# behavior for them to exercise — there is no domain logic in this phase.
+# Required status checks on PRs into main (ADR-0015). Phase 1 (Event
+# Backbone & Platform Audit Log) adds this repo's first real domain
+# behavior — admin.audit_log, the transactional outbox, and the
+# graphile-worker audit_log_writer consumer — so `test-integration` now
+# runs the compliance-critical audit-log integration suite (via
+# testcontainers, see apps/web/tests/integration/setup.ts) as a required
+# check alongside lint, typecheck, unit tests, e2e-smoke, and the Prisma
+# migration dry-run against a disposable shadow database. The contract-test
+# job (OpenAPI-response validation) still lands once `/api/v1` exists.
 on:
   pull_request:
     branches: [main]
@@ -18,7 +21,11 @@ concurrency:
 
 env:
   PNPM_VERSION: "10.32.1"
-  NODE_VERSION: "20"
+  # Node 20 cannot run @testcontainers/postgresql (undici@8.10.0's webidl
+  # cache module requires globals Node 20's built-in fetch doesn't expose:
+  # `TypeError: webidl.util.markAsUncloneable is not a function`), so
+  # test-integration needs Node 22+.
+  NODE_VERSION: "22"
 
 jobs:
   lint:
@@ -72,9 +79,48 @@ jobs:
       - name: Vitest unit project
         run: pnpm test:unit
 
+  test-integration:
+    name: "test:integration"
+    runs-on: ubuntu-latest
+    # No `services:` Postgres block here (unlike prisma-migrate-dry-run
+    # below): the "integration" Vitest project's globalSetup
+    # (apps/web/tests/integration/setup.ts) uses `@testcontainers/postgresql`
+    # to start its own disposable postgres:16 container per run, per
+    # ADR-0015. GitHub-hosted ubuntu-latest runners have a Docker daemon
+    # available at the default /var/run/docker.sock with no extra
+    # DOCKER_HOST/dind configuration required — testcontainers talks to it
+    # directly, the same as it does on a developer machine.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Vitest integration project (testcontainers Postgres 16 + graphile-worker, ADR-0015)
+        run: pnpm test:integration
+
   e2e-smoke:
     name: "e2e:smoke"
     runs-on: ubuntu-latest
+    env:
+      # proxy.ts (Phase 2's Supabase session-refresh middleware) runs on
+      # every route per its matcher, including "/" and "/api/v1/health", so
+      # the app 500s on every request without these set — even though this
+      # phase has no protected routes and the smoke suite never logs in.
+      # Like the integration suite (see
+      # tests/integration/supabaseSignup.integration.test.ts), CI never runs
+      # `supabase start`: with no session cookie on the request,
+      # getVerifiedSession()'s supabase.auth.getClaims() resolves to "no
+      # session" without ever reaching this URL, so a syntactically-valid
+      # placeholder is enough — it only needs to make getSupabaseAuthEnv()'s
+      # presence check pass.
+      NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "ci-placeholder-anon-key"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -133,9 +179,13 @@ jobs:
         run: pnpm --filter web exec prisma migrate deploy
       - name: Verify all eight bounded-context schemas were created
         run: |
+          # psql's URI parser doesn't understand Prisma's `?schema=` query
+          # parameter (it's a Prisma-only extension, not real libpq syntax),
+          # so strip it before handing DATABASE_URL to psql.
+          psql_url="${DATABASE_URL%%\?*}"
           missing=0
           for schema in identity volunteering training gamification community moderation notifications admin; do
-            found=$(psql "$DATABASE_URL" -tAc "SELECT 1 FROM information_schema.schemata WHERE schema_name = '${schema}'")
+            found=$(psql "$psql_url" -tAc "SELECT 1 FROM information_schema.schemata WHERE schema_name = '${schema}'")
             if [ "$found" != "1" ]; then
               echo "::error::Missing expected schema: ${schema}"
               missing=1
