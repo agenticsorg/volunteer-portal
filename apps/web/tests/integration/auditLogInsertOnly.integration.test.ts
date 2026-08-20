@@ -78,8 +78,17 @@ describe("admin.audit_log is insert-only (negative test)", () => {
       /insert-only/i,
     );
 
+    // Not a strict equality: this table is genuinely shared across the
+    // whole `test:integration` run (other test files' privileged-action
+    // use cases call the real `recordAuditEvent()`, and
+    // `auditLogWriter.integration.test.ts` spawns the real worker process
+    // that drains all of them into this same table concurrently with this
+    // test) — a concurrent, legitimate INSERT elsewhere growing the count
+    // between these two reads is expected and not what this test guards
+    // against. What TRUNCATE succeeding would look like is the count
+    // dropping (to 0), which `toBeGreaterThanOrEqual` still catches.
     const countAfter = await prisma.auditLog.count();
-    expect(countAfter).toBe(countBefore);
+    expect(countAfter).toBeGreaterThanOrEqual(countBefore);
     const stillThere = await prisma.auditLog.findUnique({ where: { id } });
     expect(stillThere).not.toBeNull();
   });

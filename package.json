@@ -19,10 +19,15 @@
     "db:studio": "dotenv -e .env -- pnpm --filter web exec prisma studio",
     "worker:dev": "dotenv -e .env -- pnpm --filter worker dev",
     "worker:start": "dotenv -e .env -- pnpm --filter worker start",
-    "outbox:example": "dotenv -e .env -- pnpm --filter @volunteer-portal/outbox example"
+    "outbox:example": "dotenv -e .env -- pnpm --filter @volunteer-portal/outbox example",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "verify:local-jwt": "dotenv -e .env -- pnpm --filter web exec node scripts/verify-local-supabase-jwt.mjs"
   },
   "devDependencies": {
-    "dotenv-cli": "^11.0.0"
+    "dotenv-cli": "^11.0.0",
+    "supabase": "^2.113.0"
   },
   "engines": {
     "node": ">=20"

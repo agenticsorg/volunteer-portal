@@ -168,6 +168,200 @@ model AdminDomainEvent {
   @@schema("admin")
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2 — Identity & Access: data model only
+// ---------------------------------------------------------------------------
+//
+// The Person, Chapter, RoleAssignment, ConsentRecord, and DSARRequest
+// aggregates from docs/ddd/identity-access.md, matching the Schema Sketch in
+// docs/ddd/identity-access-schema-api.md field-for-field. No use cases, no
+// API, no auth in this phase — the migration this schema drives is data
+// model only.
+//
+// Postgres enum types back four columns exactly as the Schema Sketch
+// specifies (identity.role_name, identity.scope_type,
+// identity.consent_purpose, identity.dsar_type, identity.dsar_status).
+// `chapters.status`, `persons.status`, and `consent_records.source` are
+// deliberately plain `text` + `CHECK (... IN (...))` in the sketch, not
+// enums — modeled the same way here (String, not a Prisma enum) so the
+// generated DDL matches exactly; the CHECK constraints themselves have no
+// Prisma-schema-language equivalent (no stable `@@check` attribute in this
+// Prisma version) and are hand-authored in the migration SQL, same
+// precedent as this file's existing partial indexes and triggers.
+//
+// `Chapter.leadPersonId` is an intentional soft reference (no relation, no
+// FK) per the sketch's own comment: avoids a circular creation dependency
+// between Chapter and Person, validated at the `AssignChapterLead`
+// application-layer use case instead (not built in this phase).
+// `RoleAssignment.scopeId` is similarly a plain, unrelated column — it
+// points at either `chapters.id` (same schema) or a Community-context team
+// ID (a different, not-yet-built schema), so no single FK could express it
+// even if one were wanted; enforced app-side only, per ADR-0008.
+
+enum IdentityRoleName {
+  volunteer
+  mentor
+  chapter_lead
+  content_admin
+  org_admin
+  moderator
+
+  @@map("role_name")
+  @@schema("identity")
+}
+
+enum IdentityScopeType {
+  global
+  chapter
+  team
+
+  @@map("scope_type")
+  @@schema("identity")
+}
+
+enum IdentityConsentPurpose {
+  terms_of_service
+  newsletter
+  photo_publication
+  leaderboard_participation
+  analytics_cookies
+  guardian_consent
+
+  @@map("consent_purpose")
+  @@schema("identity")
+}
+
+enum IdentityDsarType {
+  export
+  erasure
+
+  @@map("dsar_type")
+  @@schema("identity")
+}
+
+enum IdentityDsarStatus {
+  pending
+  processing
+  completed
+  failed
+
+  @@map("dsar_status")
+  @@schema("identity")
+}
+
+// Chapters are created before Persons to avoid a circular FK; the reverse
+// pointer (`leadPersonId`) is intentionally a soft reference — see the
+// header note above and ADR-0008 (Chapter is a domain entity, not a tenant
+// boundary).
+model Chapter {
+  id           String    @id
+  name         String
+  slug         String    @unique
+  city         String
+  region       String?
+  country      String
+  status       String    @default("active")
+  foundedAt    DateTime? @map("founded_at") @db.Date
+  leadPersonId String?   @map("lead_person_id")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  persons Person[]
+
+  @@index([status], map: "idx_chapters_status")
+  @@map("chapters")
+  @@schema("identity")
+}
+
+model Person {
+  id                String    @id
+  publicSlug        String    @unique @map("public_slug")
+  supabaseAuthId    String    @unique @map("supabase_auth_id")
+  email             String    @unique @db.Citext
+  displayName       String    @map("display_name")
+  pronouns          String?
+  avatarUrl         String?   @map("avatar_url")
+  bio               String?
+  dateOfBirth       DateTime? @map("date_of_birth") @db.Date
+  ageAttested16Plus Boolean   @default(false) @map("age_attested_16_plus")
+  primaryChapterId  String?   @map("primary_chapter_id")
+  status            String    @default("active")
+  anonymizedAt      DateTime? @map("anonymized_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  primaryChapter Chapter? @relation(fields: [primaryChapterId], references: [id])
+
+  roleAssignmentsAsSubject RoleAssignment[] @relation("RoleAssignmentSubject")
+  roleAssignmentsGranted   RoleAssignment[] @relation("RoleAssignmentGrantedBy")
+  roleAssignmentsRevoked   RoleAssignment[] @relation("RoleAssignmentRevokedBy")
+  consentRecords           ConsentRecord[]
+  dsarRequestsAsSubject    DSARRequest[]    @relation("DSARRequestSubject")
+  dsarRequestsRequested    DSARRequest[]    @relation("DSARRequestRequestedBy")
+
+  @@index([primaryChapterId], map: "idx_persons_chapter")
+  @@index([status], map: "idx_persons_status")
+  @@map("persons")
+  @@schema("identity")
+}
+
+model RoleAssignment {
+  id        String            @id
+  subjectId String            @map("subject_id")
+  role      IdentityRoleName
+  scopeType IdentityScopeType @default(global) @map("scope_type")
+  scopeId   String?           @map("scope_id")
+  grantedBy String            @map("granted_by")
+  grantedAt DateTime          @default(now()) @map("granted_at") @db.Timestamptz(6)
+  revokedBy String?           @map("revoked_by")
+  revokedAt DateTime?         @map("revoked_at") @db.Timestamptz(6)
+
+  subject Person  @relation("RoleAssignmentSubject", fields: [subjectId], references: [id])
+  granter Person  @relation("RoleAssignmentGrantedBy", fields: [grantedBy], references: [id])
+  revoker Person? @relation("RoleAssignmentRevokedBy", fields: [revokedBy], references: [id])
+
+  @@map("role_assignments")
+  @@schema("identity")
+}
+
+model ConsentRecord {
+  id            String                 @id
+  personId      String                 @map("person_id")
+  purpose       IdentityConsentPurpose
+  granted       Boolean
+  policyVersion String                 @map("policy_version")
+  source        String
+  guardianName  String?                @map("guardian_name")
+  guardianEmail String?                @map("guardian_email") @db.Citext
+  recordedAt    DateTime               @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  revokedAt     DateTime?              @map("revoked_at") @db.Timestamptz(6)
+
+  person Person @relation(fields: [personId], references: [id])
+
+  @@index([personId, purpose, recordedAt(sort: Desc)], map: "idx_consent_records_person_purpose")
+  @@map("consent_records")
+  @@schema("identity")
+}
+
+model DSARRequest {
+  id            String             @id
+  personId      String             @map("person_id")
+  type          IdentityDsarType
+  status        IdentityDsarStatus @default(pending)
+  requestedBy   String             @map("requested_by")
+  requestedAt   DateTime           @default(now()) @map("requested_at") @db.Timestamptz(6)
+  completedAt   DateTime?          @map("completed_at") @db.Timestamptz(6)
+  exportFileUrl String?            @map("export_file_url")
+  failureReason String?            @map("failure_reason")
+
+  subject   Person @relation("DSARRequestSubject", fields: [personId], references: [id])
+  requester Person @relation("DSARRequestRequestedBy", fields: [requestedBy], references: [id])
+
+  @@index([personId], map: "idx_dsar_requests_person")
+  @@map("dsar_requests")
+  @@schema("identity")
+}
+
 // `admin.audit_log` — the single, platform-wide privileged-action audit
 // trail (ADR-0014 §4; docs/ddd/admin-reporting.md "There is one audit log,
 // not two"). Populated exclusively by the `audit_log_writer` graphile-worker

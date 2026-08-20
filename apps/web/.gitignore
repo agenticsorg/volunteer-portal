@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# local DSAR export storage + signing key (apps/web/src/server/dsar) — see
+# exportStorage.ts's file header for why this is filesystem-backed for now
+/.data/
+
 # vercel
 .vercel
 
