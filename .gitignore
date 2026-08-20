@@ -2,9 +2,12 @@
 .env
 .env.local
 .env.*.local
-.claude-flow/data/
-.claude-flow/logs/
-.claude-flow/sessions/
+.claude-flow/
+.claude/
+.agents/
+.swarm/
+.mcp.json
+ruvector.db
 
 # dependencies
 node_modules/
