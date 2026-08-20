@@ -5,12 +5,11 @@ use sqlx::{Postgres, Transaction};
 use crate::reconciler::ReconcileReport;
 
 /// Operational log for reconcile runs -- not `audit_log` (see
-/// `events.rs`'s `DiscordRoleReconciled` doc comment). `discord_link` and
-/// its `DiscordLinkRepository` (the other table this context owns, per
-/// discord-integration.md's "Repository/port shapes") are built in
-/// Prompt 5.2 alongside `LinkCommandHandler`; the table itself was
-/// created now (migration 20260819000009) since it shares a migration
-/// with this one, but its Rust repository is out of this prompt's scope.
+/// `events.rs`'s `DiscordRoleReconciled` doc comment). This is the only
+/// table this context owns: `discord_link`/`DiscordLinkRepository` were
+/// removed (discord-integration.md, amended 2026-08-20) once
+/// `LinkCommandHandler`'s corrected, read-only design left nothing to
+/// mutate or persist a link-confirmation record for.
 #[async_trait]
 pub trait ReconcileRunLogRepository: Send + Sync {
     async fn record(
