@@ -321,6 +321,52 @@ corrected the same way when their crates are implemented (Prompts 3.1,
 3.2, 4.1, 5.2, 10.2) rather than each phase independently rediscovering
 or resolving this differently.
 
+**Amended — 2026-08-20** (Phase 4 architecture-consistency review, Prompt
+4.2): every `Repository::save` in this codebase is a single `INSERT ...
+ON CONFLICT (id) DO UPDATE` statement, used for both a true first-time
+insert and every later mutation of an existing row. This has a known,
+accepted RLS limitation, empirically confirmed while investigating a real
+bug (`hour_entry_insert`'s `WITH CHECK` being evaluated even on the
+`ON CONFLICT DO UPDATE` arm — the same class of issue Prompt 1.4 first
+found on `volunteer_insert`): **Postgres's row-level `BEFORE INSERT`
+trigger fires unconditionally for every row proposed by an `INSERT ...
+ON CONFLICT DO UPDATE` statement, even when a conflict reroutes that row
+to the `UPDATE` arm** — confirmed by a failed attempt at exactly this
+fix (a `BEFORE INSERT` trigger strictly requiring `NEW.volunteer_id =
+current_actor_id()` on `hour_entry` broke every lead/admin-driven
+approve/reject/adjust, which go through the same upsert statement).
+There is no trigger-level way to distinguish "this row is genuinely new"
+from "this row is about to be rerouted to an update" at the point a
+row-level `BEFORE INSERT` trigger fires, and a statement-level trigger
+cannot inspect per-row `NEW` values at all, so that isn't a viable
+alternative either.
+
+**Practical consequence:** for any `Repository::save` whose `INSERT`
+policy's `WITH CHECK` had to be widened beyond "self" to also satisfy the
+`ON CONFLICT DO UPDATE` arm's re-evaluation (e.g. `hour_entry_insert`
+also allowing `admin`/`is_lead_of_project`, `volunteer_insert` also
+allowing `admin`), that same widened clause also — as a side effect —
+permits a **genuinely new** row (no existing conflicting id) with those
+same widened actor credentials, even where the aggregate's own domain
+invariant would call for a narrower rule (e.g. `hour_entry`'s "self-logged
+only"). This is accepted as a known limitation, not fixed by further
+RLS/trigger engineering, for two reasons: (1) it is unreachable via any
+application code path that exists or is planned — every aggregate's only
+constructor ties the relevant actor-identifying field to the correct
+value from live, already-authorized data (e.g. `HourEntry::log` always
+sets `volunteer_id` from the `AssignmentSnapshot`'s true owner, never a
+caller-supplied value), so no legitimate handler can produce a mismatched
+row, and exploiting this gap would require a raw-SQL bypass of the Rust
+application layer entirely; (2) genuinely closing it requires splitting
+every `save()` into separate `insert()`/`update()` methods (each getting
+its own correctly-scoped policy/trigger) across every context using this
+pattern — a cross-cutting repository-shape change disproportionate to a
+theoretical, currently-unreachable gap, and inconsistent with this
+project's stated preference against building for scenarios that can't
+happen. Flagged here, once, as the canonical note for every context
+using the single-upsert `save()` pattern, rather than re-investigated
+per aggregate.
+
 ## Files in this set
 
 - `context-map.md` — this file
