@@ -169,6 +169,68 @@ that context's design) to decide whether the link is accepted. If
 `VolunteerLinkingPort` name and signature above should be reconciled
 against whatever that file settles on rather than assumed final here.
 
+**Amended — 2026-08-20** (Phase 5 architecture-consistency review, raised
+while implementing Prompt 5.2): this is the reconciliation the paragraph
+above anticipated, and it turns out `identity-access.md`/ADR-0007's
+settled design doesn't have a `VolunteerLinkingPort`/`confirm_discord_link`
+method for this sketch to reconcile *to* — the code block above cannot be
+implemented as written. `identity-access.md`'s only linking mutation is
+`Volunteer::link_additional_provider(provider, provider_user_id,
+provider_email, provider_email_verified, confirming_session_volunteer_id)`,
+and per ADR-0007 it is only ever reachable after (a) the caller already
+holds an authenticated web session for the *existing* target `Volunteer`
+and (b) a genuine OAuth handshake with the second provider has actually
+run and proven control of it. A bare, cryptographically-verified Discord
+interaction supplies neither: it proves control of the Discord account
+issuing the command (Ed25519 signature), but nothing about which
+`Volunteer` the invoker is already authenticated as on the web, and it is
+not itself an OAuth handshake for the *other* provider being linked. The
+code block's `requesting_volunteer: VolunteerId` parameter was assumed
+already resolved with no mechanism given for resolving it from a bare
+Discord interaction, because there isn't a secure one — supplying it from
+anything the interaction alone carries would be exactly the "prove
+account ownership by assertion, not by re-authenticating" pattern ADR-0007
+was written to close.
+
+**Corrected design:** `LinkCommandHandler::handle_link` performs **no
+mutation and calls no Identity & Access linking port at all.** Given the
+verified `discord_user_id`, it does a **read-only** check —
+`identity_access::VolunteerRepository::find_by_discord_id` (already
+built, Prompt 1.3) — and replies to the interaction (ephemeral message or
+DM):
+- **Already linked:** an idempotent "this Discord account is already
+  connected to your volunteer profile" reply. No event, no write —
+  matches this section's original idempotency goal, just via a read
+  instead of a repository "already recorded" flag.
+- **Not yet linked:** a reply directing the volunteer to the existing,
+  already-built, already-reviewed web flow (Prompts 1.5/2.2's OAuth login
+  plus `account_linking.rs`'s manual-linking UI) — log in with whichever
+  provider is already linked (or, for a volunteer who signed up via
+  Google and wants to add Discord, log in with Google), then use account
+  settings to link the other provider, which runs the real OAuth
+  handshake `link_additional_provider` requires. No token, session-bridge,
+  or Discord-specific linking mechanism is introduced — every actual
+  mutation continues to flow exclusively through the one path ADR-0007
+  already reviewed and Prompt 2.2 already tested, so `/link` adds zero new
+  security-sensitive surface. (A convenience enhancement — e.g. a
+  short-lived, Discord-DM-delivered link that pre-authenticates a
+  *already-linked* volunteer's web session to save a login step — is a
+  legitimate future UX improvement, but is not required by any ADR/DDD
+  document and should not be built as part of this prompt's exit
+  criteria.)
+
+**Consequence for this crate's owned state:** `handle_link` needs no
+transaction actor of its own beyond the read — since a raw Discord
+interaction has no corresponding authenticated web session either, this
+read is System-actor-scoped (`kernel::ScopedDb::begin_system_scoped`,
+Prompt 5.1) exactly like the reconcile job, and depends on the same
+`volunteer_select` RLS fix the Phase 5 review already required for
+`RoleReconciler` — sequence this after that fix lands, not before.
+Because no mutation happens here, `DiscordLinkCompleted` (below) never
+fires and the `discord_link` table (migration `20260819000009`) has no
+writer under this design — see the "Domain events" and "Repository/port
+shapes" sections below for the corresponding removal.
+
 ## Domain events
 
 **Consumed** (from the outbox, per context-map.md's reactive mechanism):
@@ -195,17 +257,19 @@ now + short_debounce)`.
   which is the right home for high-frequency, system-actor,
   operational-monitoring data that would otherwise dilute the
   compliance-focused audit trail.
-- `DiscordLinkCompleted { volunteer_id, discord_id, linked_at }` — **is**
-  `AuditableEvent` (action: `Custom("discord_linked")`, entity_type:
-  `Volunteer`, entity_id: the volunteer's id). Unlike a reconcile run,
-  this changes a specific person's identity data at their own request (or
-  an admin's, for `/link`-initiated cases) — exactly the kind of thing
-  ADR-0005's `audit_log` exists for. This does mean `entity_type` stays
-  `Volunteer` rather than growing a `discord_link` variant — deliberate,
-  since the audited fact is "this volunteer's identity data changed," and
-  `entity_type` classifying by the affected aggregate (not by which
-  context triggered the change) keeps the audit log's taxonomy stable as
-  more contexts touch `Volunteer` over time.
+
+**Removed — 2026-08-20** (matching amendment above): `DiscordLinkCompleted`
+no longer exists. Under the corrected `handle_link` design, this context
+never mutates `Volunteer`/`OAuthLink` state, so it has no linking event of
+its own to emit — the audit-worthy fact ("this volunteer's identity data
+changed") is fully covered by `identity-access.md`'s existing
+`OAuthAccountLinked` event, regardless of whether the linking flow was
+initiated from the web UI or nudged by a `/link` command reply, since both
+paths now converge on the same `link_additional_provider` call site.
+`compliance-audit.md`'s synthesized events table still lists
+`DiscordLinkCompleted` as of this writing (written against
+`discord-integration.md`'s original, now-corrected sketch) and should have
+that row removed to match.
 
 ## Repository/port shapes
 
@@ -213,24 +277,10 @@ This context is asymmetric relative to the others: it is a **consumer and
 executor**, not a source of truth for domain state that other contexts
 need to query. It exposes almost nothing outward; it mostly *depends on*
 ports owned elsewhere (`ApprovedVolunteersQuery`, `ActiveProjectMembershipQuery`,
-`VolunteerLinkingPort`, all declared by/for the owning context, not this
-one). The two things it does own and persist:
+declared by/for the owning context, not this one). The one thing it does
+own and persist:
 
 ```rust
-/// One row per link confirmation — supports admin-facing "who linked
-/// when" visibility and re-run idempotency (don't re-emit
-/// DiscordLinkCompleted for an already-linked pair).
-#[async_trait]
-pub trait DiscordLinkRepository: Send + Sync {
-    async fn find_by_discord_id(
-        &self, tx: &mut Transaction<'_, Postgres>, discord_id: DiscordUserId,
-    ) -> Result<Option<DiscordLinkRecord>, RepoError>;
-
-    async fn save(
-        &self, tx: &mut Transaction<'_, Postgres>, record: &DiscordLinkRecord,
-    ) -> Result<Vec<Box<dyn DomainEvent>>, RepoError>;
-}
-
 /// Operational log for reconcile runs — not audit_log (see above).
 #[async_trait]
 pub trait ReconcileRunLogRepository: Send + Sync {
@@ -242,11 +292,22 @@ pub trait ReconcileRunLogRepository: Send + Sync {
 }
 ```
 
-Both take a caller-supplied `&mut Transaction<'_, Postgres>` per
+Takes a caller-supplied `&mut Transaction<'_, Postgres>` per
 context-map.md's RLS-safety convention, even though `reconcile_run_log`
 itself is `System`-actor data with looser RLS needs than volunteer-scoped
 tables — consistency of the repository calling convention across the
 codebase is worth more here than the marginal benefit of a special case.
+
+**Removed — 2026-08-20** (matching the `/link` amendment above):
+`DiscordLinkRepository`/`DiscordLinkRecord` no longer exist. Under the
+corrected `LinkCommandHandler` design this context never mutates or
+persists a link fact of its own — it only reads
+`identity_access::VolunteerRepository::find_by_discord_id` for the
+idempotency check. `VolunteerLinkingPort` (referenced above) also no
+longer exists; there is no Identity & Access port for this context to
+depend on, because there is no mutation to delegate. The `discord_link`
+table (migration `20260819000009`) should be dropped in a follow-up
+migration rather than kept as an unused table with live RLS policies.
 
 ## Failure handling
 

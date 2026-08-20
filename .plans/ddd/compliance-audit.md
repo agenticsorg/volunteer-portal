@@ -322,6 +322,24 @@ on context-map.md's stated ownership and the event names their own
 drafting briefs named, and should be reconciled against those files' final
 text once written).
 
+**Amended — 2026-08-20** (Phase 5 architecture-consistency review): this
+is that reconciliation for `discord-integration.md`'s `DiscordLinkCompleted`
+row, which the table below no longer lists. Prompt 5.2 implementation
+surfaced that `discord-integration.md`'s original `/link`-handling sketch
+couldn't be built as written — it assumed a direct
+`Volunteer`/`OAuthLink`-mutating port that `identity-access.md`/ADR-0007's
+actual account-linking design doesn't provide (linking requires an
+authenticated web session plus a real OAuth handshake with the second
+provider, neither of which a bare Discord interaction supplies).
+`discord-integration.md` was corrected in place: `LinkCommandHandler` is
+now read-only (an idempotency check plus a reply directing the volunteer
+to the existing web linking flow), emits no event, and mutates nothing —
+every actual linking mutation, regardless of which flow nudged the
+volunteer toward it, converges on `identity-access.md`'s existing
+`OAuthAccountLinked` event, listed below. See
+[discord-integration.md](./discord-integration.md)'s matching amendment
+for the full reasoning.
+
 | Context | Aggregate/Service | Event | `AuditableEvent`? | `action` value |
 |---|---|---|---|---|
 | Identity & Access | `Volunteer` | `VolunteerOnboarded` | Yes | `Created` |
@@ -339,7 +357,6 @@ text once written).
 | Hours & Verification | `HourEntry` | `HoursApproved` | Yes | `HourApproved` |
 | Hours & Verification | `HourEntry` | `HoursRejected` | Yes | `HourRejected` |
 | Hours & Verification | `HourEntry` | `HoursAdjusted` | Yes | `HourAdjusted` |
-| Discord Integration | `LinkCommandHandler` | `DiscordLinkCompleted` (`/link` flow) | Yes (identity-affecting) | `Custom("discord_linked")` |
 | Discord Integration | `RoleReconciler` | `DiscordRoleReconciled` (routine tick) | **No** — logged to this context's own `reconcile_run_log` instead; a system-actor operational event has no natural `entity_type` slot and would dilute the compliance-focused log, per [discord-integration.md](./discord-integration.md) | n/a |
 | Notifications | — | `NotificationSent` / `NotificationFailed` | **No** — delivery telemetry, not a domain-state change; visible instead via Notifications' own `NotificationAttemptRepository`, per [notifications.md](./notifications.md) | n/a |
 | Compliance & Audit | `DataSubjectRequest` | `DataSubjectRequestReceived` | Yes | `Created` |
