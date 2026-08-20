@@ -236,6 +236,106 @@ describe("authz: can()", () => {
       ).toBe(true);
     });
   });
+
+  describe("volunteering: opportunity.create / opportunity.manage / shift.manage", () => {
+    const chapterLeadOfLondon: RoleAssignmentFact[] = [
+      { role: "chapter_lead", scopeType: "chapter", scopeId: "chapter_london", revokedAt: null },
+    ];
+    const orgAdmin: RoleAssignmentFact[] = [
+      { role: "org_admin", scopeType: "global", scopeId: null, revokedAt: null },
+    ];
+
+    it.each(["opportunity.create", "opportunity.manage", "shift.manage"] as const)(
+      "%s: a chapter_lead may act within their own chapter, not another",
+      (action) => {
+        expect(
+          can(
+            { id: "lead_1", status: "active" },
+            action,
+            { type: "opportunity", scopeType: "chapter", scopeId: "chapter_london" },
+            chapterLeadOfLondon,
+          ),
+        ).toBe(true);
+        expect(
+          can(
+            { id: "lead_1", status: "active" },
+            action,
+            { type: "opportunity", scopeType: "chapter", scopeId: "chapter_sv" },
+            chapterLeadOfLondon,
+          ),
+        ).toBe(false);
+      },
+    );
+
+    it.each(["opportunity.create", "opportunity.manage", "shift.manage"] as const)(
+      "%s: an org-wide (chapterId null) resource requires org_admin — a chapter_lead cannot act on it",
+      (action) => {
+        expect(
+          can(
+            { id: "admin_1", status: "active" },
+            action,
+            { type: "opportunity", scopeType: "global", scopeId: null },
+            orgAdmin,
+          ),
+        ).toBe(true);
+        expect(
+          can(
+            { id: "lead_1", status: "active" },
+            action,
+            { type: "opportunity", scopeType: "global", scopeId: null },
+            chapterLeadOfLondon,
+          ),
+        ).toBe(false);
+      },
+    );
+
+    it("a mentor alone (no chapter_lead/org_admin) cannot manage an opportunity/shift", () => {
+      const mentor: RoleAssignmentFact[] = [
+        { role: "mentor", scopeType: "chapter", scopeId: "chapter_london", revokedAt: null },
+      ];
+      for (const action of ["opportunity.create", "opportunity.manage", "shift.manage"] as const) {
+        expect(
+          can(
+            { id: "mentor_1", status: "active" },
+            action,
+            { type: "opportunity", scopeType: "chapter", scopeId: "chapter_london" },
+            mentor,
+          ),
+        ).toBe(false);
+      }
+    });
+  });
+
+  describe("volunteering: application.decide / hour_entry.approve / hour_entry.reject", () => {
+    const mentorOfLondon: RoleAssignmentFact[] = [
+      { role: "mentor", scopeType: "chapter", scopeId: "chapter_london", revokedAt: null },
+    ];
+    const globalMentor: RoleAssignmentFact[] = [
+      { role: "mentor", scopeType: "global", scopeId: null, revokedAt: null },
+    ];
+    const chapterLeadOfLondon: RoleAssignmentFact[] = [
+      { role: "chapter_lead", scopeType: "chapter", scopeId: "chapter_london", revokedAt: null },
+    ];
+    const volunteerOnly: RoleAssignmentFact[] = [];
+
+    it.each(["application.decide", "hour_entry.approve", "hour_entry.reject"] as const)(
+      "%s: chapter_lead, mentor (chapter-scoped or global), and org_admin all qualify",
+      (action) => {
+        const resource = { type: "hour_entry", scopeType: "chapter", scopeId: "chapter_london" } as const;
+        expect(can({ id: "lead_1", status: "active" }, action, resource, chapterLeadOfLondon)).toBe(true);
+        expect(can({ id: "mentor_1", status: "active" }, action, resource, mentorOfLondon)).toBe(true);
+        expect(can({ id: "mentor_2", status: "active" }, action, resource, globalMentor)).toBe(true);
+        expect(can({ id: "v_1", status: "active" }, action, resource, volunteerOnly)).toBe(false);
+      },
+    );
+
+    it("a mentor scoped to a different chapter does not qualify", () => {
+      const resource = { type: "hour_entry", scopeType: "chapter", scopeId: "chapter_sv" } as const;
+      expect(can({ id: "mentor_1", status: "active" }, "hour_entry.approve", resource, mentorOfLondon)).toBe(
+        false,
+      );
+    });
+  });
 });
 
 describe("hasRoleInScope", () => {
