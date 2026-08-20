@@ -1,0 +1,31 @@
+name: volunteer-portal
+
+# Local development Postgres only (ADR-0015: "local development uses
+# `docker compose up` (Postgres + graphile-worker locally)"). Staging and
+# production run on managed Neon Postgres per ADR-0016 — this file is not
+# used for those environments.
+services:
+  postgres:
+    image: postgres:16
+    container_name: volunteer-portal-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-volunteer_portal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-volunteer_portal}
+      POSTGRES_DB: ${POSTGRES_DB:-volunteer_portal}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - volunteer-portal-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-volunteer_portal} -d ${POSTGRES_DB:-volunteer_portal}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  volunteer-portal-postgres-data:
