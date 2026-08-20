@@ -117,6 +117,7 @@ async fn audit_framework_records_exactly_one_row_per_mutation() {
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(SqlxProjectRepository),
         assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
+        discord_interactions_public_key: "test-public-key".to_string(),
         discord_oauth: Arc::new(UnusedDiscordOAuthClient),
         google_oauth: None,
     };
@@ -252,6 +253,7 @@ async fn unauthenticated_request_is_rejected_before_any_mutation() {
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(SqlxProjectRepository),
         assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
+        discord_interactions_public_key: "test-public-key".to_string(),
         discord_oauth: Arc::new(UnusedDiscordOAuthClient),
         google_oauth: None,
     };

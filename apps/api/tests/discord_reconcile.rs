@@ -24,6 +24,18 @@
 //! ports, so there is nothing it *could* cache -- each call's
 //! `desynced_count`/`corrected_count` can only be correct if it re-read
 //! live state from the fake every time.
+//!
+//! Every `reconcile()` call here is scoped via `db.begin_system_scoped()`
+//! -- the same actor-less transaction `apps/api/src/bin/reconcile_discord_roles.rs`
+//! actually uses in production, not `begin_scoped(volunteer_id)`. An
+//! earlier version of this test used the latter, which happened to make
+//! `volunteer_select`'s RLS policy pass (the seeded volunteer could see
+//! their own row) without exercising the real production scoping at all
+//! -- masking a real bug where `volunteer_select`/`assignment_select`
+//! had no `current_actor_id() is null` fallback, so the real
+//! `begin_system_scoped()` job silently read zero rows and did nothing
+//! on every actual run. Fixed by migration 20260819000011; this test now
+//! actually proves the fix by using the real scoping.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -183,7 +195,7 @@ async fn reconcile_corrects_a_manually_desynced_role_with_no_cache_and_self_heal
     );
 
     // Discord starts fully desynced: the member has neither role at all.
-    let mut tx = db.begin_scoped(volunteer_id).await.unwrap();
+    let mut tx = db.begin_system_scoped().await.unwrap();
     let report = reconciler.reconcile(&mut tx).await.unwrap();
     tx.commit().await.unwrap();
 
@@ -195,7 +207,7 @@ async fn reconcile_corrects_a_manually_desynced_role_with_no_cache_and_self_heal
     // further corrections. This can only be correct if reconcile()
     // re-read the fake's live state rather than trusting the previous
     // report -- there is no cache anywhere for it to consult instead.
-    let mut tx = db.begin_scoped(volunteer_id).await.unwrap();
+    let mut tx = db.begin_system_scoped().await.unwrap();
     let second = reconciler.reconcile(&mut tx).await.unwrap();
     tx.commit().await.unwrap();
     assert_eq!(second.desynced_count, 0, "re-running with no state change must find nothing to correct");
@@ -206,7 +218,7 @@ async fn reconcile_corrects_a_manually_desynced_role_with_no_cache_and_self_heal
     // directly, bypassing apply_delta entirely).
     client.set_actual("1000", &["base"]);
 
-    let mut tx = db.begin_scoped(volunteer_id).await.unwrap();
+    let mut tx = db.begin_system_scoped().await.unwrap();
     let third = reconciler.reconcile(&mut tx).await.unwrap();
     tx.commit().await.unwrap();
     assert_eq!(third.desynced_count, 1, "the manually-removed project role must be found as desynced");
@@ -227,7 +239,7 @@ async fn reconcile_corrects_a_manually_desynced_role_with_no_cache_and_self_heal
     // mistake that this system doesn't manage at all.
     client.set_actual("1000", &["base", project_role.as_str(), "stale-role"]);
 
-    let mut tx = db.begin_scoped(volunteer_id).await.unwrap();
+    let mut tx = db.begin_system_scoped().await.unwrap();
     let fourth = reconciler.reconcile(&mut tx).await.unwrap();
     tx.commit().await.unwrap();
     assert_eq!(

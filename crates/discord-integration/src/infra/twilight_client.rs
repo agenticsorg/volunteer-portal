@@ -4,8 +4,8 @@ use twilight_model::id::marker::{GuildMarker, RoleMarker, UserMarker};
 use twilight_model::id::Id;
 
 use crate::discord_client::{
-    ActualMemberRoles, DiscordApiError, DiscordRoleReadWrite, RoleChangeAction, RoleChangeOutcome,
-    RoleDelta,
+    ActualMemberRoles, DiscordApiError, DiscordNotificationSender, DiscordRoleReadWrite,
+    RoleChangeAction, RoleChangeOutcome, RoleDelta,
 };
 use crate::ids::{DiscordRoleId, DiscordUserId};
 
@@ -141,5 +141,33 @@ impl DiscordRoleReadWrite for TwilightDiscordClient {
         }
 
         outcomes
+    }
+}
+
+#[async_trait]
+impl DiscordNotificationSender for TwilightDiscordClient {
+    async fn send_dm(&self, discord_id: &DiscordUserId, content: &str) -> Result<(), DiscordApiError> {
+        let user_id: Id<UserMarker> = discord_id
+            .0
+            .parse::<u64>()
+            .map(Id::new)
+            .map_err(|_| DiscordApiError(format!("'{discord_id}' is not a valid Discord user snowflake")))?;
+
+        let channel = self
+            .client
+            .create_private_channel(user_id)
+            .await
+            .map_err(|e| DiscordApiError(e.to_string()))?
+            .model()
+            .await
+            .map_err(|e| DiscordApiError(e.to_string()))?;
+
+        self.client
+            .create_message(channel.id)
+            .content(content)
+            .await
+            .map_err(|e| DiscordApiError(e.to_string()))?;
+
+        Ok(())
     }
 }

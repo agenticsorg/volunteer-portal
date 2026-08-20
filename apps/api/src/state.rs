@@ -18,6 +18,10 @@ pub struct AppState {
     /// per-entry `LeadMembershipQuery` re-check (hours-verification.md's
     /// "Other invariants").
     pub assignment_snapshot: Arc<dyn AssignmentSnapshotQuery>,
+    /// Discord's interactions application public key (hex-encoded),
+    /// verified against `X-Signature-Ed25519`/`X-Signature-Timestamp`
+    /// before any interaction payload is parsed (Prompt 5.2, ADR-0008).
+    pub discord_interactions_public_key: String,
     pub discord_oauth: Arc<dyn crate::oauth::DiscordOAuthClient>,
     /// `None` when Google OAuth credentials aren't configured (e.g. no
     /// live Google app in this environment) — the Google routes 404

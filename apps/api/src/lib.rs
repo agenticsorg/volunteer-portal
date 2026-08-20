@@ -10,6 +10,7 @@ pub mod account_linking;
 pub mod active_membership_adapter;
 pub mod assignment_snapshot_adapter;
 pub mod auth;
+pub mod discord_interactions;
 pub mod dto;
 pub mod error;
 pub mod hours;
@@ -79,6 +80,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/volunteers/{volunteer_id}/hours/total",
             get(hours::volunteer_hours_total),
+        )
+        .route(
+            "/discord/interactions",
+            post(discord_interactions::handle_interaction),
         )
         .with_state(state)
 }

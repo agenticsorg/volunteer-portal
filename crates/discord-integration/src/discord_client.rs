@@ -61,3 +61,17 @@ pub trait DiscordRoleReadWrite: Send + Sync {
 
     async fn apply_delta(&self, deltas: &[RoleDelta]) -> Vec<RoleChangeOutcome>;
 }
+
+/// Delivery mechanics only -- **what** to say and **when** to trigger it
+/// belongs to `notifications.md` (Prompt 7.1), which owns
+/// `NotificationAttempt` bookkeeping and its own `DiscordDmSender` port
+/// that an `apps/api` adapter will implement by delegating to this trait,
+/// the same indirection `ActiveProjectMembershipQuery` uses today
+/// (`discord-integration` and `notifications` are siblings -- neither
+/// depends on the other). This crate's own `DiscordNotificationSender`
+/// exists now because "implement the infra layer against twilight-http"
+/// is this prompt's task regardless of which context ends up calling it.
+#[async_trait]
+pub trait DiscordNotificationSender: Send + Sync {
+    async fn send_dm(&self, discord_id: &DiscordUserId, content: &str) -> Result<(), DiscordApiError>;
+}
