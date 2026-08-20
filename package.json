@@ -30,7 +30,7 @@
     "supabase": "^2.113.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "packageManager": "pnpm@10.32.1"
 }

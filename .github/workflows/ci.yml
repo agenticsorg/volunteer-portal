@@ -21,7 +21,11 @@ concurrency:
 
 env:
   PNPM_VERSION: "10.32.1"
-  NODE_VERSION: "20"
+  # Node 20 cannot run @testcontainers/postgresql (undici@8.10.0's webidl
+  # cache module requires globals Node 20's built-in fetch doesn't expose:
+  # `TypeError: webidl.util.markAsUncloneable is not a function`), so
+  # test-integration needs Node 22+.
+  NODE_VERSION: "22"
 
 jobs:
   lint:
