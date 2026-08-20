@@ -107,6 +107,20 @@ jobs:
   e2e-smoke:
     name: "e2e:smoke"
     runs-on: ubuntu-latest
+    env:
+      # proxy.ts (Phase 2's Supabase session-refresh middleware) runs on
+      # every route per its matcher, including "/" and "/api/v1/health", so
+      # the app 500s on every request without these set — even though this
+      # phase has no protected routes and the smoke suite never logs in.
+      # Like the integration suite (see
+      # tests/integration/supabaseSignup.integration.test.ts), CI never runs
+      # `supabase start`: with no session cookie on the request,
+      # getVerifiedSession()'s supabase.auth.getClaims() resolves to "no
+      # session" without ever reaching this URL, so a syntactically-valid
+      # placeholder is enough — it only needs to make getSupabaseAuthEnv()'s
+      # presence check pass.
+      NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "ci-placeholder-anon-key"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
