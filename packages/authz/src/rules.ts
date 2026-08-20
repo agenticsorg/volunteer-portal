@@ -192,4 +192,13 @@ export const rules: readonly PolicyRule[] = [
     action: "hour_entry.reject",
     allow: (_subject, resource, assignments) => hasApprovalAuthority(resource, assignments),
   },
+  {
+    // ExportApprovedHours (Key Use Case 10): "Caller holds org_admin or
+    // chapter_lead (scoped to the requested chapter, if any filter is
+    // applied)" — identical shape to `opportunity.manage`/`shift.manage`,
+    // not `hasApprovalAuthority` (a plain `mentor` may approve individual
+    // hour entries but is not granted the bulk grant-report export).
+    action: "hours.export",
+    allow: (_subject, resource, assignments) => hasChapterManagementAuthority(resource, assignments),
+  },
 ];

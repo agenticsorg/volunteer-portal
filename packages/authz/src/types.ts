@@ -108,6 +108,15 @@ export const ACTIONS = [
   // sample already names.
   "hour_entry.approve",
   "hour_entry.reject",
+  // ExportApprovedHours (Key Use Case 10) / the `hourEntries.exportApproved`
+  // tRPC query and the `GET /api/v1/hour-entries/export` REST surface built
+  // on top of `queryApprovedHours`: "Caller holds org_admin or chapter_lead
+  // (scoped to the requested chapter, if any filter is applied)" — the same
+  // chapter-scoped-or-org_admin shape as `opportunity.manage`/`shift.manage`,
+  // reusing `hasChapterManagementAuthority` in `rules.ts`. This is the API
+  // layer's own authorization hook for a read `queryApprovedHours` itself
+  // deliberately leaves ungated (see that function's doc comment).
+  "hours.export",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];

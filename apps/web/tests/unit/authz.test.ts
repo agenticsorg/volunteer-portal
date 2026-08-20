@@ -336,6 +336,42 @@ describe("authz: can()", () => {
       );
     });
   });
+
+  describe("volunteering: hours.export", () => {
+    const chapterLeadOfLondon: RoleAssignmentFact[] = [
+      { role: "chapter_lead", scopeType: "chapter", scopeId: "chapter_london", revokedAt: null },
+    ];
+    const orgAdmin: RoleAssignmentFact[] = [
+      { role: "org_admin", scopeType: "global", scopeId: null, revokedAt: null },
+    ];
+    const mentorOfLondon: RoleAssignmentFact[] = [
+      { role: "mentor", scopeType: "chapter", scopeId: "chapter_london", revokedAt: null },
+    ];
+
+    it("a chapter_lead may export their own chapter's approved hours, not another's", () => {
+      const resource = { type: "hour_entry", scopeType: "chapter", scopeId: "chapter_london" } as const;
+      expect(can({ id: "lead_1", status: "active" }, "hours.export", resource, chapterLeadOfLondon)).toBe(true);
+      expect(
+        can(
+          { id: "lead_1", status: "active" },
+          "hours.export",
+          { type: "hour_entry", scopeType: "chapter", scopeId: "chapter_sv" },
+          chapterLeadOfLondon,
+        ),
+      ).toBe(false);
+    });
+
+    it("an unfiltered (global-scope) export requires org_admin — a chapter_lead cannot", () => {
+      const resource = { type: "hour_entry", scopeType: "global", scopeId: null } as const;
+      expect(can({ id: "admin_1", status: "active" }, "hours.export", resource, orgAdmin)).toBe(true);
+      expect(can({ id: "lead_1", status: "active" }, "hours.export", resource, chapterLeadOfLondon)).toBe(false);
+    });
+
+    it("a plain mentor (no chapter_lead/org_admin) cannot export", () => {
+      const resource = { type: "hour_entry", scopeType: "chapter", scopeId: "chapter_london" } as const;
+      expect(can({ id: "mentor_1", status: "active" }, "hours.export", resource, mentorOfLondon)).toBe(false);
+    });
+  });
 });
 
 describe("hasRoleInScope", () => {
