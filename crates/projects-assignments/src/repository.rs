@@ -530,3 +530,41 @@ impl AssignmentRepository for SqlxAssignmentRepository {
         Ok(assignment.take_events())
     }
 }
+
+/// Backs `discord_integration::ActiveProjectMembershipQuery`'s `apps/api`
+/// adapter (Prompt 5.1) -- `discord-integration` does not depend on this
+/// crate (context-map.md's acyclic graph), so this trait's implementation
+/// lives here (the owning context) and the adapter in `apps/api` (the
+/// composition root) delegates to it, mirroring `hours-verification`'s
+/// `AssignmentSnapshotQuery`/`ProjectsAssignmentsSnapshotAdapter` pattern
+/// exactly. Filtered to `Approved` assignments with `Contributor`
+/// `participation_mode` only -- reusing Prompt 3.2's construction-time
+/// guarantee rather than re-deriving event-hours logic here, per
+/// discord-integration.md's explicit instruction.
+#[async_trait]
+pub trait ActiveContributorMembershipsQuery: Send + Sync {
+    async fn active_contributor_memberships(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<Vec<(VolunteerId, ProjectId)>, RepoError>;
+}
+
+#[async_trait]
+impl ActiveContributorMembershipsQuery for SqlxAssignmentRepository {
+    async fn active_contributor_memberships(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<Vec<(VolunteerId, ProjectId)>, RepoError> {
+        let rows = sqlx::query!(
+            r#"select volunteer_id, project_id from assignment
+               where status = 'approved' and participation_mode = 'contributor'"#
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| (Id::from_uuid(r.volunteer_id), Id::from_uuid(r.project_id)))
+            .collect())
+    }
+}

@@ -53,6 +53,23 @@ impl ScopedDb {
             .await?;
         Ok(tx)
     }
+
+    /// Opens a transaction for the `System` actor (`ActorId::System`) --
+    /// a scheduled job with no corresponding `volunteer` row, e.g. the
+    /// Discord role-reconcile job (Prompt 5.1). Deliberately does **not**
+    /// call `set_config` at all, leaving `app.current_user_id` unset for
+    /// the transaction so `current_actor_id()` resolves `NULL` (its
+    /// `nullif(current_setting(..., true), '')` definition already
+    /// handles the unset case) -- the same "actor_id is null ... future
+    /// System-actor scope" allowance `audit_log`'s own INSERT policy
+    /// anticipated back in Prompt 1.4. Every RLS policy a System-actor
+    /// job needs to pass must explicitly include `current_actor_id() is
+    /// null` as an alternative, the same way `current_actor_role() =
+    /// 'admin'` is an alternative elsewhere -- there is no separate
+    /// bypass role.
+    pub async fn begin_system_scoped(&self) -> Result<Transaction<'static, Postgres>, RepoError> {
+        Ok(self.pool.begin().await?)
+    }
 }
 
 #[cfg(test)]

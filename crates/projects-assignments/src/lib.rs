@@ -16,6 +16,7 @@ pub use project::{
     EventSchedule, LeadRole, Project, ProjectError, ProjectLead, ProjectStatus, ProjectType,
 };
 pub use repository::{
-    AssignmentRepository, EventOccurrence, LeadMembershipQuery, ProjectRepository,
-    ProjectSummary, SqlxAssignmentRepository, SqlxProjectRepository, UpcomingEventOccurrencesQuery,
+    ActiveContributorMembershipsQuery, AssignmentRepository, EventOccurrence, LeadMembershipQuery,
+    ProjectRepository, ProjectSummary, SqlxAssignmentRepository, SqlxProjectRepository,
+    UpcomingEventOccurrencesQuery,
 };

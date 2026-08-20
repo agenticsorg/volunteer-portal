@@ -7,6 +7,7 @@
 //! same `Router`/`AppState` without spawning a real server.
 
 pub mod account_linking;
+pub mod active_membership_adapter;
 pub mod assignment_snapshot_adapter;
 pub mod auth;
 pub mod dto;

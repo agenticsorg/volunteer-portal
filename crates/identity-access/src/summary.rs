@@ -29,6 +29,21 @@ pub trait VolunteerSummaryQuery: Send + Sync {
         &self,
         tx: &mut Transaction<'_, Postgres>,
     ) -> Result<Vec<VolunteerSummary>, RepoError>;
+
+    /// Backs `discord_integration::ApprovedVolunteersQuery` directly
+    /// (Prompt 5.1) -- `discord-integration` is a legal Cargo dependent
+    /// of this crate (context-map.md), so its `ApprovedVolunteersQuery`
+    /// implementation calls this method rather than a second SQL query
+    /// or an `apps/api` adapter (unlike `hours-verification`'s
+    /// `AssignmentSnapshotQuery`, which needed the adapter indirection
+    /// specifically because `hours-verification` and `projects-
+    /// assignments` are *not* allowed to depend on each other). Returns
+    /// the raw `discord_id` string -- this crate has no `DiscordUserId`
+    /// newtype of its own, and shouldn't; the caller wraps it.
+    async fn approved_with_discord_id(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<Vec<(VolunteerId, String)>, RepoError>;
 }
 
 pub struct SqlxVolunteerSummaryQuery;
@@ -73,6 +88,23 @@ impl VolunteerSummaryQuery for SqlxVolunteerSummaryQuery {
                 role: Role::parse(&r.role).expect("role column must be a valid Role"),
                 status: VolunteerStatus::parse(&r.status).expect("status column must be a valid VolunteerStatus"),
             })
+            .collect())
+    }
+
+    async fn approved_with_discord_id(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<Vec<(VolunteerId, String)>, RepoError> {
+        let rows = sqlx::query!(
+            r#"select id, discord_id as "discord_id!" from volunteer
+               where status = 'approved' and discord_id is not null"#
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| (kernel::Id::from_uuid(r.id), r.discord_id))
             .collect())
     }
 }

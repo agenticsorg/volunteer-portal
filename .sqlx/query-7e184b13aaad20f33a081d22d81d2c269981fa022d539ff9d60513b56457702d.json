@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id, desynced_count, corrected_count, failed_count,\n                      ran_at as \"ran_at: chrono::DateTime<chrono::Utc>\"\n               from reconcile_run_log order by ran_at desc limit 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "desynced_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "corrected_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "failed_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "ran_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7e184b13aaad20f33a081d22d81d2c269981fa022d539ff9d60513b56457702d"
+}

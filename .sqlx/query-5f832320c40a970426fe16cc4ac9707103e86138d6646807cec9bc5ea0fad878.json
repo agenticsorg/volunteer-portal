@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into reconcile_run_log (id, desynced_count, corrected_count, failed_count, ran_at)\n               values ($1, $2, $3, $4, $5)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5f832320c40a970426fe16cc4ac9707103e86138d6646807cec9bc5ea0fad878"
+}
