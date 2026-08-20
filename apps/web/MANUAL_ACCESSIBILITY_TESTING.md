@@ -1,4 +1,4 @@
-# Manual accessibility testing — signup flow (Prompt 2.3), project directory/apply/roster (Prompt 3.3)
+# Manual accessibility testing — signup flow (Prompt 2.3), project directory/apply/roster (Prompt 3.3), hour entry/approval queue (Prompt 4.2)
 
 build-roadmap.md's Phase 2 exit criterion requires **both** automated and
 manual WCAG 2.1 AA testing on the signup flow, explicitly noting that
@@ -73,3 +73,30 @@ manual gap as above, applied to these three views specifically:
    applicant/role suffix) is what's actually announced, not truncated to
    just "Approve"/"Remove"; confirm the `aria-live="polite"` search-error
    and apply-error regions are announced.
+
+## Hour entry and approval queue (Prompt 4.2)
+
+**What's done:** automated axe-core testing
+(`src/components/log-hours-form.a11y.test.tsx`,
+`src/components/hours-approval-queue.a11y.test.tsx`) covers the
+self-log form and the approval queue table (empty and populated
+states), plus accessible-name assertions for the queue's per-row
+checkbox and Reject button (each identifies which date/hours it acts
+on, not a bare "Reject" repeated once per row) and for the number-type
+`date`/`hours` inputs.
+
+**What's not done, and can't be done by an autonomous agent:** the same
+manual gap as above, applied to these two views:
+
+1. **Keyboard only:** tab through the log-hours form's date/hours/
+   description fields and submit button; on the approval queue, tab
+   through each row's checkbox and Reject button, and confirm the
+   Approve-selected button's disabled state (until at least one
+   checkbox is checked) is clearly communicated by focus/state alone,
+   not just visually.
+2. **Screen reader:** confirm the approval queue's checkboxes announce
+   which specific entry they select (date and hours, not just
+   "checkbox"); confirm the number input's spinner controls (`type="number"`)
+   are usable and clearly announced; confirm the `role="alert"`
+   bulk-approve partial-failure message ("N approved, N could not be
+   approved") is announced promptly, not silently left in the DOM.
