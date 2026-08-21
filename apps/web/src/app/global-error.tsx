@@ -11,15 +11,16 @@
  * a separate, browser-safe env var from the server-side `SENTRY_DSN` this
  * app's `errorReporter` (`src/server/observability/sentry.ts`) uses, since
  * only `NEXT_PUBLIC_*`-prefixed vars are ever inlined into the client
- * bundle. Unset (this environment's actual state — no Sentry project
- * exists to get a DSN from), this intentionally does nothing beyond
- * rendering the fallback UI: no client-side Sentry.init() has been called
- * anywhere in this app, so calling `captureException` without one would be
- * a silent no-op at best; skipping the call entirely is the more honest
- * behavior. Server-side errors (Server Components, Route Handlers, Server
- * Actions) are already captured via `instrumentation.ts`'s `onRequestError`
- * before this boundary ever renders, so production error coverage does not
- * depend on this client-side path.
+ * bundle. `src/instrumentation-client.ts` calls `Sentry.init()` under the
+ * same `NEXT_PUBLIC_SENTRY_DSN` gate before hydration, so this
+ * `captureException` call reports to a real, initialized client SDK
+ * instance whenever that env var is set. Unset (this environment's actual
+ * state — no Sentry project exists to get a DSN from), both that init and
+ * this call are skipped, so this intentionally does nothing beyond
+ * rendering the fallback UI. Server-side errors (Server Components, Route
+ * Handlers, Server Actions) are already captured via `instrumentation.ts`'s
+ * `onRequestError` before this boundary ever renders, so production error
+ * coverage does not depend on this client-side path.
  */
 import { useEffect } from "react";
 
