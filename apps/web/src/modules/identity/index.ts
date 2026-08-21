@@ -35,6 +35,15 @@ export type { PersonSummary } from "./application/findPersonByAuthId";
 export { getPersonSummary } from "./application/getPersonSummary";
 export type { PersonPublicSummary } from "./application/getPersonSummary";
 
+/**
+ * The one Person projection that includes `email` — narrow, additive read
+ * for `notifications`' Resend integration only (ADR-0012). See this
+ * function's own doc comment for why it is deliberately separate from
+ * `getPersonSummary`.
+ */
+export { getPersonContactInfo } from "./application/getPersonContactInfo";
+export type { PersonContactInfo } from "./application/getPersonContactInfo";
+
 export { listActiveRoleAssignments, listRoleAssignmentHistory } from "./application/listActiveRoleAssignments";
 export type { RoleAssignmentRecord } from "./application/listActiveRoleAssignments";
 

@@ -204,6 +204,12 @@ export const ACTIONS = [
   // ownership check, `resource.ownerId` is the action's own
   // `moderatorPersonId`.
   "moderation_action.revoke",
+  // --- notifications (docs/ddd/notifications.md) ---
+  // SetNotificationPreference (Key Use Case 2): "a person may only set
+  // their own preferences" — an ownership-only check, `resource.ownerId`
+  // is the `personId` whose preference is being written (the resource has
+  // no chapter/team scope of its own, so `scopeType: "global"`).
+  "notification.preference.manage",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];
