@@ -35,3 +35,14 @@ yarn-error.log*
 .pnpm-debug.log*
 .vercel
 next-env.d.ts
+
+# terraform (infra/) — provider plugin cache and CLI history, never
+# committed. .terraform.lock.hcl IS committed for the root modules under
+# infra/environments/ (standard Terraform practice, pins provider
+# versions); infra/modules/* are not root modules and are never `init`'d
+# except locally as a `terraform validate` convenience, so their lock
+# files are ignored too.
+.terraform/
+infra/modules/**/.terraform.lock.hcl
+*.tfplan
+infra/modules/fly-worker/generated/

@@ -1,0 +1,174 @@
+name: DR Drill
+
+# Quarterly disaster-recovery restore drill — ADR-0016 "Disaster recovery /
+# backup policy": "a quarterly restore drill — the most recent nightly
+# pg_dump is restored into a fresh, throwaway Neon branch and the
+# application's integration test suite ... is run against it as a
+# correctness check that the backup is actually restorable and
+# structurally valid ... posts its pass/fail result to the team's incident
+# channel; a failed drill is treated as a P2 incident."
+#
+# ============================================================================
+# THIS WORKFLOW HAS NEVER BEEN EXECUTED. It requires the following GitHub
+# Actions repository secrets, none of which exist in this environment:
+#   - NEON_API_KEY                                (Neon Terraform provider
+#     auth — provisions the throwaway project this drill restores into;
+#     see infra/environments/dr-drill/main.tf)
+#   - R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ENDPOINT /
+#     R2_BACKUP_BUCKET                             (Cloudflare R2
+#     S3-compatible credentials — reads the nightly pg_dump object written
+#     by the backup Fly Machine described in ADR-0016 / defined in
+#     infra/modules/fly-worker/templates/backup-machine.toml.tftpl; that
+#     backup machine itself has also never been deployed in this
+#     environment, so as of writing there is no real backup object for
+#     this workflow to find even once the credentials above exist)
+#   - DR_DRILL_WEBHOOK_URL                         (Slack or Discord
+#     incoming-webhook URL — posts pass/fail to the incident channel)
+#
+# Until an org 1Password vault and these repository secrets are
+# provisioned, every run (scheduled or manual) fails at the first step
+# that needs one of them. That is the correct, honest behavior for this
+# environment — this file is real, runnable CI configuration, not a
+# placeholder; it simply cannot complete without real credentials only the
+# project's maintainers can provision.
+#
+# Also flagged honestly: `pnpm test:integration` (apps/web/tests/integration
+# /setup.ts, ADR-0015) currently ALWAYS provisions its own disposable
+# testcontainers Postgres in its Vitest `globalSetup` and overwrites
+# `process.env.DATABASE_URL` with that container's connection string — it
+# does not currently honor a pre-set DATABASE_URL pointing at an external
+# database. That means the "Run integration suite against the restored
+# database" step below, as written, verifies the integration suite still
+# passes in general, but does NOT yet actually exercise the restored
+# database's data. Making the integration harness honor an
+# externally-supplied DATABASE_URL (skipping its own testcontainers
+# bootstrap when one is present) is a real gap to close before this drill
+# is meaningful, and is out of scope for the infra/workflow-only change
+# that introduced this file.
+# ============================================================================
+
+on:
+  schedule:
+    # Quarterly: 06:00 UTC on the 1st of January/April/July/October,
+    # per ADR-0016's exact cron.
+    - cron: "0 6 1 */3 *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: dr-drill
+  cancel-in-progress: false
+
+env:
+  PNPM_VERSION: "10.32.1"
+  NODE_VERSION: "22"
+  TF_VERSION: "1.9.8"
+
+jobs:
+  dr-drill:
+    name: Quarterly disaster-recovery restore drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Provision throwaway Neon project (Terraform)
+        id: provision
+        working-directory: infra/environments/dr-drill
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          set -euo pipefail
+          terraform init
+          terraform apply -auto-approve -var "drill_id=${{ github.run_id }}"
+          {
+            echo "connection_uri<<TF_OUTPUT_EOF"
+            terraform output -raw connection_uri
+            echo
+            echo "TF_OUTPUT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore latest R2 backup into the throwaway project
+        id: restore
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BACKUP_BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
+          DATABASE_URL: ${{ steps.provision.outputs.connection_uri }}
+        run: |
+          set -euo pipefail
+          start_epoch=$(date +%s)
+
+          latest_key=$(aws s3api list-objects-v2 \
+            --endpoint-url "$R2_ENDPOINT" \
+            --bucket "$R2_BACKUP_BUCKET" \
+            --query 'sort_by(Contents, &LastModified)[-1].Key' \
+            --output text)
+
+          if [ -z "$latest_key" ] || [ "$latest_key" = "None" ]; then
+            echo "::error::No backup object found in s3://$R2_BACKUP_BUCKET — nothing to restore."
+            exit 1
+          fi
+
+          aws s3 cp "s3://$R2_BACKUP_BUCKET/$latest_key" ./latest-backup.sql.gz \
+            --endpoint-url "$R2_ENDPOINT"
+
+          gunzip -c ./latest-backup.sql.gz | psql "$DATABASE_URL"
+
+          end_epoch=$(date +%s)
+          echo "restore_seconds=$((end_epoch - start_epoch))" >> "$GITHUB_OUTPUT"
+          echo "backup_key=$latest_key" >> "$GITHUB_OUTPUT"
+
+      - name: Run integration suite against the restored database
+        id: verify
+        env:
+          # See this file's top comment: the integration harness does not
+          # yet honor an externally-supplied DATABASE_URL, so this step
+          # currently re-verifies the suite passes in general rather than
+          # specifically against the data just restored above.
+          DATABASE_URL: ${{ steps.provision.outputs.connection_uri }}
+        run: pnpm test:integration
+
+      - name: Tear down throwaway Neon project
+        if: always()
+        working-directory: infra/environments/dr-drill
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          set -euo pipefail
+          terraform destroy -auto-approve -var "drill_id=${{ github.run_id }}"
+
+      - name: Post result to incident channel
+        if: always()
+        env:
+          WEBHOOK_URL: ${{ secrets.DR_DRILL_WEBHOOK_URL }}
+          OUTCOME: ${{ job.status }}
+          RESTORE_SECONDS: ${{ steps.restore.outputs.restore_seconds }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # A failed drill is a P2 incident requiring same-week remediation
+          # per ADR-0016, not a backlog item — the job's own status (driven
+          # by whichever earlier step failed) already surfaces that in the
+          # Actions UI; this step's only job is getting the same signal
+          # into the team's incident channel.
+          message="DR drill ${OUTCOME}: restore took ${RESTORE_SECONDS:-unknown}s. ${RUN_URL}"
+          curl -sf -X POST "$WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg text "$message" '{text: $text}')"
