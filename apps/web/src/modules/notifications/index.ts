@@ -25,16 +25,22 @@
  * in-app notification center (read/unread state via `MarkAsRead`/
  * `MarkAllAsRead`/`ListUnread`).
  *
- * Deliberately NOT in this stage (a later stage's job, same split every
- * other module's `index.ts` header already documents for its own event-relay
- * worker): the tRPC router (`server/api/routers/notifications.ts` stays an
- * empty stub for now), the REST webhook receiver
- * (`app/api/webhooks/resend/route.ts`), and the graphile-worker tasks that
- * poll each source schema's `domain_events` table and call this module's
- * five `consume*Events` functions per row, or that schedule
- * `ProcessDeliveryJob` for newly-`pending` email `delivery_attempt` rows —
- * this module exports the fully-idempotent consumer/delivery logic those
- * tasks will call, not the polling/scheduling mechanism itself.
+ * A later stage (the API layer) added the tRPC router
+ * (`server/api/routers/notifications.ts`, per docs/ddd/notifications.md's
+ * API Contract Sketch) plus two thin read-only queries that sketch names but
+ * the domain/application stage didn't build yet — `listNotifications`
+ * (`listAll`) and `listPreferences` — exported alongside every other
+ * use case below.
+ *
+ * Still NOT in this module (a later stage's job, same split every other
+ * module's `index.ts` header already documents for its own event-relay
+ * worker): the REST webhook receiver (`app/api/webhooks/resend/route.ts`),
+ * and the graphile-worker tasks that poll each source schema's
+ * `domain_events` table and call this module's five `consume*Events`
+ * functions per row, or that schedule `ProcessDeliveryJob` for newly-
+ * `pending` email `delivery_attempt` rows — this module exports the fully-
+ * idempotent consumer/delivery logic those tasks will call, not the
+ * polling/scheduling mechanism itself.
  */
 
 // --- Inbound event consumption (ADR-0009) — one job per source schema ---
@@ -100,6 +106,14 @@ export type { MarkAllAsReadInput, MarkedAllAsRead } from "./application/markAllA
 
 export { listUnread } from "./application/listUnread";
 export type { ListUnreadInput, NotificationListItemDTO, UnreadNotificationPage } from "./application/listUnread";
+
+/** `listAll` (API Contract Sketch) — full notification history, read or unread; see this stage's own `listNotifications.ts` doc comment. */
+export { listNotifications } from "./application/listNotifications";
+export type { ListNotificationsInput, NotificationHistoryItemDTO, NotificationPage } from "./application/listNotifications";
+
+/** `listPreferences` (API Contract Sketch) — the read half of Key Use Case 2; see this stage's own `listPreferences.ts` doc comment. */
+export { listPreferences } from "./application/listPreferences";
+export type { ListPreferencesInput, NotificationPreferenceDTO } from "./application/listPreferences";
 
 // --- Resend webhook handling (Key Use Case 7) ---
 export { handleResendWebhook } from "./application/handleResendWebhook";
