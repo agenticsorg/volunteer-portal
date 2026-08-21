@@ -40,15 +40,42 @@ describe("communityRouter (integration)", () => {
   });
 
   afterAll(async () => {
-    await prisma.communityDomainEvent.deleteMany({});
-    await prisma.communityProcessedEvent.deleteMany({});
-    await prisma.feedEntry.deleteMany({});
-    await prisma.kudos.deleteMany({});
-    await prisma.teamMembership.deleteMany({});
-    await prisma.team.deleteMany({});
-    await prisma.mentorship.deleteMany({});
-    await prisma.post.deleteMany({});
-    await prisma.moderationDomainEvent.deleteMany({});
+    // Scoped to this file's own personIds — never an unscoped
+    // deleteMany({}), which would race with other integration test files'
+    // still-running tests against the same shared testcontainer Postgres
+    // (Vitest runs integration test files in parallel by default) and
+    // wipe their in-progress rows out from under them. The aggregate
+    // tables below (post/kudos/team/teamMembership/mentorship/
+    // moderationAction) don't need their own tracked-id arrays — every row
+    // any of this file's procedures create is reachable by querying for
+    // this file's own personIds first, since every one of those aggregates
+    // carries an author/actor/target person id.
+    const [postIds, kudosIds, teamIds, teamMembershipIds, mentorshipIds, moderationActionIds] = await Promise.all([
+      prisma.post.findMany({ where: { authorId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+      prisma.kudos
+        .findMany({ where: { OR: [{ fromPersonId: { in: personIds } }, { toPersonId: { in: personIds } }] }, select: { id: true } })
+        .then((rows) => rows.map((r) => r.id)),
+      prisma.team.findMany({ where: { createdByPersonId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+      prisma.teamMembership.findMany({ where: { personId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+      prisma.mentorship
+        .findMany({ where: { OR: [{ mentorPersonId: { in: personIds } }, { menteePersonId: { in: personIds } }] }, select: { id: true } })
+        .then((rows) => rows.map((r) => r.id)),
+      prisma.moderationAction.findMany({ where: { targetPersonId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+    ]);
+
+    await prisma.communityDomainEvent.deleteMany({
+      where: { aggregateId: { in: [...postIds, ...kudosIds, ...teamIds, ...teamMembershipIds, ...mentorshipIds] } },
+    });
+    // communityProcessedEvent is never written by this file (no test here
+    // calls consumeInboundEvent) — nothing of this file's ever lands there,
+    // so there is nothing to scope/delete.
+    await prisma.feedEntry.deleteMany({ where: { subjectPersonId: { in: personIds } } });
+    await prisma.kudos.deleteMany({ where: { id: { in: kudosIds } } });
+    await prisma.teamMembership.deleteMany({ where: { id: { in: teamMembershipIds } } });
+    await prisma.team.deleteMany({ where: { id: { in: teamIds } } });
+    await prisma.mentorship.deleteMany({ where: { id: { in: mentorshipIds } } });
+    await prisma.post.deleteMany({ where: { id: { in: postIds } } });
+    await prisma.moderationDomainEvent.deleteMany({ where: { aggregateId: { in: moderationActionIds } } });
     await prisma.moderationAction.deleteMany({ where: { targetPersonId: { in: personIds } } });
     await prisma.roleAssignment.deleteMany({ where: { subjectId: { in: personIds } } });
     await prisma.person.deleteMany({ where: { id: { in: personIds } } });
