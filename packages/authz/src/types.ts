@@ -160,6 +160,50 @@ export const ACTIONS = [
   // (no chapter delegates this; a `chapter_lead` may only post *into* their
   // own chapter, never org-wide).
   "post.create_org_scope",
+  // --- moderation (docs/ddd/moderation-trust-safety.md) ---
+  // ClaimReport (Key Use Case 2): "rejected if the moderator's
+  // `role_assignment` scope doesn't cover the Report's
+  // `scopeType`/`scopeId`" — an `org_admin`, a `global`-scoped `moderator`,
+  // or a `chapter`-scoped `moderator` whose chapter matches the Report's
+  // own `scopeId`. `resource` is built from the Report's own
+  // `scopeType`/`scopeId` (mapped `"org" -> "global"` per this package's
+  // two-value `ScopeType`, same mapping `grantRole.ts`'s own audit-scope
+  // comment already documents). Also gates `DismissReport` when the Report
+  // is still `open` (the fast-dismiss branch of Key Use Case 6 — no
+  // `assignedModeratorId` exists yet to run an ownership check against, so
+  // this is the same scope-authority test as claiming).
+  "report.claim",
+  // DismissReport (Key Use Case 6) once a Report has already moved to
+  // `reviewing`: Report invariant 4 ("only the `assignedModeratorId`
+  // currently holding the claim, or an `org_admin`") — an ownership check,
+  // not a scope-authority one. `resource.ownerId` is the Report's
+  // `assignedModeratorId`. Shares this action (not `report.claim`) with
+  // `ResolveReport`, since both are the identical "only the claim holder,
+  // or org_admin" test the doc's invariant 4 states once for both
+  // transitions.
+  "report.resolve",
+  // ReleaseReportClaim (Key Use Case 3): "the assigned moderator releases
+  // a claimed Report back to the queue" — the same claim-holder-or-
+  // `org_admin` ownership shape as `report.resolve`, kept as its own
+  // action (not folded into `report.resolve`) for the same per-mutation
+  // audit-trail granularity `hour_entry.approve`/`hour_entry.reject` keep
+  // separately despite an identical authority shape.
+  "report.release_claim",
+  // TakeModerationAction (Key Use Case 4) / ModerationAction invariant 3:
+  // "a moderator whose `role_assignment` is `chapter`-scoped may only
+  // create `ModerationAction`s with `scopeType = 'chapter'` and `scopeId`
+  // equal to their assigned chapter; only an `org_admin`-or-broader-scoped
+  // moderator may create `scopeType = 'org'` actions." `resource` is built
+  // from the *requested* action's own `scopeType`/`scopeId` (not the
+  // originating Report's) — a `ban`'s hard `scopeType = 'org'` requirement
+  // (invariant 3's second half) is enforced by the use case itself before
+  // this check runs, since `can()` has no notion of `actionType`.
+  "moderation_action.take",
+  // RevokeModerationAction (Key Use Case 7) / ModerationAction invariant 4:
+  // "can only be revoked by its issuing moderator or an `org_admin`" — an
+  // ownership check, `resource.ownerId` is the action's own
+  // `moderatorPersonId`.
+  "moderation_action.revoke",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];

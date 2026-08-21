@@ -124,6 +124,7 @@ export { cloudflareR2Adapter, presignS3PutUrl } from "./infra/cloudflareR2Client
 export type { PostAttachmentStorageAdapter, PresignedPutUrl } from "./infra/cloudflareR2Client";
 
 export {
+  ActiveModerationSanctionError,
   ForbiddenActionError,
   PersonNotFoundError,
   PostNotFoundError,
