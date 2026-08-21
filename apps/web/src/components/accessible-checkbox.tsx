@@ -14,11 +14,11 @@ export function AccessibleCheckbox() {
     <div className="flex items-center gap-2">
       <Checkbox.Root
         id="accessible-checkbox-demo"
-        className="flex h-5 w-5 items-center justify-center rounded border border-zinc-400 bg-white data-[state=checked]:bg-[#ff5a1f] dark:bg-zinc-900"
+        className="flex h-5 w-5 items-center justify-center rounded border border-input bg-background data-[state=checked]:bg-primary"
       >
-        <Checkbox.Indicator className="text-white">✓</Checkbox.Indicator>
+        <Checkbox.Indicator className="text-primary-foreground">✓</Checkbox.Indicator>
       </Checkbox.Root>
-      <Label.Root htmlFor="accessible-checkbox-demo" className="text-sm">
+      <Label.Root htmlFor="accessible-checkbox-demo" className="font-mono text-sm text-foreground">
         Radix UI accessible checkbox primitive
       </Label.Root>
     </div>

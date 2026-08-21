@@ -84,7 +84,7 @@ export function ProjectRoster({ projectId }: { projectId: string }) {
 
   if (status === "loading") {
     return (
-      <p role="status" className="text-sm text-[#1a2a3a]">
+      <p role="status" className="font-mono text-sm text-foreground">
         Loading roster…
       </p>
     );
@@ -92,7 +92,7 @@ export function ProjectRoster({ projectId }: { projectId: string }) {
 
   if (status === "error") {
     return (
-      <p role="alert" className="text-sm text-red-700">
+      <p role="alert" className="font-mono text-sm text-destructive">
         {error}
       </p>
     );
@@ -100,7 +100,7 @@ export function ProjectRoster({ projectId }: { projectId: string }) {
 
   if (assignments.length === 0) {
     return (
-      <p role="status" className="text-sm text-[#1a2a3a]">
+      <p role="status" className="font-mono text-sm text-foreground">
         No one has applied to this project yet.
       </p>
     );
@@ -110,30 +110,30 @@ export function ProjectRoster({ projectId }: { projectId: string }) {
     <table className="w-full max-w-3xl border-collapse text-left">
       <caption className="sr-only">Roster of applicants and members for this project</caption>
       <thead>
-        <tr className="border-b border-zinc-300">
-          <th scope="col" className="p-2 text-sm font-medium text-[#1a2a3a]">
+        <tr className="border-b border-border">
+          <th scope="col" className="p-2 font-mono text-sm font-semibold text-foreground">
             Role
           </th>
-          <th scope="col" className="p-2 text-sm font-medium text-[#1a2a3a]">
+          <th scope="col" className="p-2 font-mono text-sm font-semibold text-foreground">
             Status
           </th>
-          <th scope="col" className="p-2 text-sm font-medium text-[#1a2a3a]">
+          <th scope="col" className="p-2 font-mono text-sm font-semibold text-foreground">
             Actions
           </th>
         </tr>
       </thead>
       <tbody>
         {assignments.map((assignment) => (
-          <tr key={assignment.id} className="border-b border-zinc-200">
-            <td className="p-2 text-sm text-[#1a2a3a]">{assignment.role}</td>
-            <td className="p-2 text-sm text-[#1a2a3a]">{assignment.status}</td>
+          <tr key={assignment.id} className="border-b border-border">
+            <td className="p-2 font-mono text-sm text-foreground">{assignment.role}</td>
+            <td className="p-2 font-mono text-sm text-foreground">{assignment.status}</td>
             <td className="p-2 text-sm">
               <div className="flex gap-2">
                 {assignment.status === "applied" ? (
                   <button
                     type="button"
                     onClick={() => act(assignment.id, "approve")}
-                    className="rounded bg-[#ff5a1f] px-3 py-1 font-medium text-white"
+                    className="rounded-full bg-primary px-4 py-1.5 font-mono text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
                   >
                     Approve{" "}
                     <span className="sr-only">{assignment.role} application</span>
@@ -143,7 +143,7 @@ export function ProjectRoster({ projectId }: { projectId: string }) {
                   <button
                     type="button"
                     onClick={() => act(assignment.id, "remove")}
-                    className="rounded border border-zinc-400 px-3 py-1 font-medium text-[#1a2a3a]"
+                    className="rounded-full border border-border px-4 py-1.5 font-mono text-sm font-bold text-foreground transition-colors hover:border-primary hover:text-primary"
                   >
                     Remove{" "}
                     <span className="sr-only">{assignment.role} from project</span>
