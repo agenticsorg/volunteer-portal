@@ -73,7 +73,13 @@ export async function ingestVideoWebhook(
   const isReady = payload.readyToStream === true || payload.status?.state === "ready";
   if (!isReady) {
     const mapped = payload.status?.state === "error" ? "error" : "processing";
-    if (video.encodeStatus !== mapped && video.encodeStatus === "uploading") {
+    // `error` is terminal (same as `ready`): once recorded, later webhook
+    // redeliveries are no-ops. Otherwise any forward move off the current
+    // status is applied — this covers both `uploading -> processing` and a
+    // later `processing -> error` delivery (Cloudflare's documented
+    // `uploading -> processing -> ready/error` machine), not just the first
+    // transition off `uploading`.
+    if (video.encodeStatus !== mapped && video.encodeStatus !== "error") {
       await prisma.video.update({ where: { id: video.id }, data: { encodeStatus: mapped } });
     }
     return;

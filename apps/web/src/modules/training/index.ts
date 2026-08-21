@@ -17,8 +17,9 @@
  * (`infra/`) are exported as interfaces + a default real implementation, so
  * application-layer use cases (and their tests) can inject a fake — no
  * Cloudflare credentials are required to exercise the domain logic. The
- * tRPC router (`server/api/routers/training.ts`) remains an empty stub —
- * wiring it up is a later stage's work, same split Phase 2/3 used.
+ * tRPC router (`server/api/routers/training.ts`) is fully wired — every
+ * procedure calls one of this module's exported use cases, same
+ * application-layer/router split Phase 2/3 used.
  */
 
 // --- Authoring ---

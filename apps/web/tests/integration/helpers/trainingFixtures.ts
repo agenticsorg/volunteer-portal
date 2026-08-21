@@ -51,6 +51,16 @@ export function readyWebhookBody(streamUid: string, durationSeconds = 120): stri
   return JSON.stringify({ uid: streamUid, status: { state: "ready" }, duration: durationSeconds, readyToStream: true });
 }
 
+/** Builds a synthetic Cloudflare Stream `status.state: "inprogress"` webhook body (the `processing` encode-status leg). */
+export function processingWebhookBody(streamUid: string): string {
+  return JSON.stringify({ uid: streamUid, status: { state: "inprogress" }, readyToStream: false });
+}
+
+/** Builds a synthetic Cloudflare Stream `status.state: "error"` webhook body (the `error` encode-status leg). */
+export function errorWebhookBody(streamUid: string): string {
+  return JSON.stringify({ uid: streamUid, status: { state: "error" }, readyToStream: false });
+}
+
 /**
  * "Direct" fixture builders — insert rows straight via Prisma rather than
  * through the use cases under test, same "don't depend on the thing being

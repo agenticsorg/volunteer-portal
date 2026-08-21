@@ -19,7 +19,13 @@ import {
 } from "@/modules/training";
 import { createPerson, grantRoleDirect } from "./helpers/identityFixtures";
 import { callerSubject } from "./helpers/volunteeringFixtures";
-import { fakeStreamAdapter, fakeR2Adapter, readyWebhookBody } from "./helpers/trainingFixtures";
+import {
+  fakeStreamAdapter,
+  fakeR2Adapter,
+  readyWebhookBody,
+  processingWebhookBody,
+  errorWebhookBody,
+} from "./helpers/trainingFixtures";
 
 // Exercises the Course/Module/Video/Enrollment/Quiz/Certificate lifecycle
 // end to end against a real Postgres: authoring -> the mandatory
@@ -150,6 +156,56 @@ describe("Training lifecycle (integration)", () => {
 
     const row = await prisma.course.findUniqueOrThrow({ where: { id: courseId } });
     expect(row.status).toBe("published");
+  });
+
+  it("advances Video.encodeStatus from uploading through processing to error on a later failed-encode webhook", async () => {
+    const admin = await setupContentAdmin();
+    const { courseId } = await createCourse(prisma, {
+      caller: callerSubject(admin),
+      slug: `encode-error-test-${Date.now()}`,
+      title: "Encode Error Test Course",
+    });
+    courseIds.push(courseId);
+
+    const { moduleId } = await addModule(prisma, {
+      caller: callerSubject(admin),
+      courseId,
+      title: "Module 1",
+      sequence: 1,
+    });
+
+    const stream = fakeStreamAdapter();
+    const { videoId } = await initiateVideoUpload(prisma, { caller: callerSubject(admin), moduleId }, stream);
+    const videoRow = await prisma.video.findUniqueOrThrow({ where: { id: videoId } });
+    expect(videoRow.encodeStatus).toBe("uploading");
+
+    // uploading -> processing (an intermediate `inprogress` delivery).
+    await ingestVideoWebhook(
+      prisma,
+      { rawBody: processingWebhookBody(videoRow.cloudflareStreamId), signatureHeader: "time=1,sig1=x" },
+      stream,
+    );
+    let video = await prisma.video.findUniqueOrThrow({ where: { id: videoId } });
+    expect(video.encodeStatus).toBe("processing");
+
+    // processing -> error (a later failed-encode delivery must still land,
+    // not be silently dropped because the row already moved off `uploading`).
+    await ingestVideoWebhook(
+      prisma,
+      { rawBody: errorWebhookBody(videoRow.cloudflareStreamId), signatureHeader: "time=1,sig1=x" },
+      stream,
+    );
+    video = await prisma.video.findUniqueOrThrow({ where: { id: videoId } });
+    expect(video.encodeStatus).toBe("error");
+
+    // error is terminal — a stray redelivery reporting `processing` again must not resurrect it.
+    await ingestVideoWebhook(
+      prisma,
+      { rawBody: processingWebhookBody(videoRow.cloudflareStreamId), signatureHeader: "time=1,sig1=x" },
+      stream,
+    );
+    video = await prisma.video.findUniqueOrThrow({ where: { id: videoId } });
+    expect(video.encodeStatus).toBe("error");
   });
 
   it(
