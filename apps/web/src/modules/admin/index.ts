@@ -9,15 +9,21 @@
  * lint rule (eslint.config.mjs) for enforcement.
  *
  * Phase 9 scope (docs/ddd/admin-reporting.md; docs/plans/implementation-plan.md's
- * "Phase 9 — Admin & Reporting"): the domain/application layer only (no
- * tRPC/REST API layer yet — that is a later stage's own Build item, same
- * split every other module's own phase-scoped header note documents).
+ * "Phase 9 — Admin & Reporting"): the domain/application layer, plus (this
+ * stage) the tRPC API layer under `api/trpc/router.ts`
+ * (`server/api/routers/admin.ts` is the thin adapter that mounts it on the
+ * root `appRouter`, same split every other module's own router follows).
  *
  * - `ReportDefinition`/`ExportJob` lifecycle (`CreateReportDefinition`,
  *   `UpdateReportDefinition`, `RequestExportJob`, `ProcessExportJob`,
- *   `GetExportDownloadUrl`) — including the SNAPSHOTTED-VALUATION-RATE
- *   invariant (`requestExportJob.ts`'s own doc comment carries the full
- *   explanation; this is the phase's one load-bearing invariant).
+ *   `GetExportDownloadUrl`, plus the read-side `listReportDefinitions`/
+ *   `getReportDefinition`/`listExportJobs`/`getExportJob` this stage adds
+ *   for the API Contract Sketch's own `reportDefinition.list`/`.get` and
+ *   `exportJob.list`/`.get` procedures — no dedicated Key Use Case number,
+ *   same "thin, `org_admin`-gated read" shape as the lifecycle use cases
+ *   they sit beside) — including the SNAPSHOTTED-VALUATION-RATE invariant
+ *   (`requestExportJob.ts`'s own doc comment carries the full explanation;
+ *   this is the phase's one load-bearing invariant).
  * - `OrchestrateDsarRequest` + `consumeIdentityDsarEvents`: a COMMAND call
  *   to `identity.submitDsarRequest(...)` through `identity`'s own
  *   `index.ts` barrel only — this module never reads or writes
@@ -68,6 +74,18 @@ export type { ProcessExportJobResult } from "./application/processExportJob";
 
 export { getExportDownloadUrl } from "./application/getExportDownloadUrl";
 export type { ExportDownloadUrl, GetExportDownloadUrlInput } from "./application/getExportDownloadUrl";
+
+export { listReportDefinitions } from "./application/listReportDefinitions";
+export type { ListReportDefinitionsInput, ReportDefinitionDto } from "./application/listReportDefinitions";
+
+export { getReportDefinition } from "./application/getReportDefinition";
+export type { GetReportDefinitionInput } from "./application/getReportDefinition";
+
+export { listExportJobs } from "./application/listExportJobs";
+export type { ExportJobDto, ExportJobPage, ListExportJobsFilters, ListExportJobsInput } from "./application/listExportJobs";
+
+export { getExportJob } from "./application/getExportJob";
+export type { GetExportJobInput } from "./application/getExportJob";
 
 // --- DSAR orchestration (a command to identity, never direct data ownership — ADR-0014) ---
 export { orchestrateDsarRequest } from "./application/orchestrateDsarRequest";
