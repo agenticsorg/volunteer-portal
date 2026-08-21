@@ -50,11 +50,22 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // ADR-0013: the semantic-matching service is additive, never load-
+    // bearing (the deterministic SQL directory search works with this
+    // layer disabled or erroring) -- unlike Discord's mandatory-provider
+    // `.expect()` above, an unset URL just defaults to the service's own
+    // documented default port rather than failing startup.
+    let semantic_matching_url = std::env::var("SEMANTIC_MATCHING_URL")
+        .unwrap_or_else(|_| "http://localhost:8081".to_string());
+
     let state = AppState {
         db: kernel::ScopedDb::new(pool),
         lead_membership: Arc::new(SqlxProjectRepository),
         assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
         project_names: Arc::new(api::project_name_adapter::ProjectsAssignmentsNameAdapter),
+        semantic_match: Arc::new(api::semantic_matching_client::HttpSemanticMatchClient::new(
+            semantic_matching_url,
+        )),
         discord_interactions_public_key: std::env::var("DISCORD_PUBLIC_KEY")
             .expect("DISCORD_PUBLIC_KEY must be set"),
         discord_oauth: Arc::new(discord_oauth),

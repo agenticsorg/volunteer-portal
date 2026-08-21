@@ -132,3 +132,34 @@ jobs:
       - name: Accessibility tests (axe-core)
         working-directory: apps/web
         run: npm test
+
+  semantic-matching:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: services/semantic-matching/package-lock.json
+
+      - name: Install dependencies
+        working-directory: services/semantic-matching
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: services/semantic-matching
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: services/semantic-matching
+        run: npm run build
+
+      # ADR-0013: exercises the real ruvector-backed matcher end to end
+      # (OnnxEmbedder downloads and caches all-MiniLM-L6-v2 from Hugging
+      # Face on first run) plus the HTTP surface `HttpSemanticMatchClient`
+      # talks to.
+      - name: Test
+        working-directory: services/semantic-matching
+        run: npm test

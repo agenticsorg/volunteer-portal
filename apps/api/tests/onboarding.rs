@@ -98,6 +98,7 @@ async fn build_test_app(owner_pool: &PgPool, app_pool: PgPool, discord_user: Dis
         lead_membership: Arc::new(SqlxProjectRepository),
         assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
         project_names: Arc::new(api::project_name_adapter::ProjectsAssignmentsNameAdapter),
+        semantic_match: Arc::new(api::semantic_matching_client::NullSemanticMatchClient),
         discord_interactions_public_key: "test-public-key".to_string(),
         discord_oauth: Arc::new(FakeDiscordOAuthClient { user: discord_user }),
         google_oauth: Some(Arc::new(UnusedGoogleOAuthClient)),

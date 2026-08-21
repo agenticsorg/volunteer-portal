@@ -89,6 +89,7 @@ async fn setup() -> (
         lead_membership: Arc::new(SqlxProjectRepository),
         assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
         project_names: Arc::new(api::project_name_adapter::ProjectsAssignmentsNameAdapter),
+        semantic_match: Arc::new(api::semantic_matching_client::NullSemanticMatchClient),
         discord_interactions_public_key: public_key_hex,
         discord_oauth: Arc::new(UnusedDiscordOAuthClient),
         google_oauth: Some(Arc::new(UnusedGoogleOAuthClient)),
