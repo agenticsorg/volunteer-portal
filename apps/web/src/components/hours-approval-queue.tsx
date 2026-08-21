@@ -7,7 +7,12 @@ import type { BulkApproveHoursResult } from "@/generated/BulkApproveHoursResult"
 import type { HourEntryDto } from "@/generated/HourEntry";
 import type { RejectHoursRequest } from "@/generated/RejectHoursRequest";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+// Relative by default so requests proxy through Next's own server
+// (next.config.ts's rewrites()), avoiding both Private Network Access
+// blocks and cross-origin cookie issues in dev. Set
+// NEXT_PUBLIC_API_BASE_URL to a real absolute URL only for a deployment
+// where the frontend calls the api crate directly cross-origin.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
 type LoadStatus = "loading" | "error" | "done";
 
@@ -104,7 +109,7 @@ export function HoursApprovalQueue() {
 
   if (status === "loading") {
     return (
-      <p role="status" className="text-sm text-[#1a2a3a]">
+      <p role="status" className="font-mono text-sm text-foreground">
         Loading approval queue…
       </p>
     );
@@ -112,7 +117,7 @@ export function HoursApprovalQueue() {
 
   if (status === "error") {
     return (
-      <p role="alert" className="text-sm text-red-700">
+      <p role="alert" className="font-mono text-sm text-destructive">
         {error}
       </p>
     );
@@ -120,7 +125,7 @@ export function HoursApprovalQueue() {
 
   if (entries.length === 0) {
     return (
-      <p role="status" className="text-sm text-[#1a2a3a]">
+      <p role="status" className="font-mono text-sm text-foreground">
         No pending hours to review right now.
       </p>
     );
@@ -130,7 +135,7 @@ export function HoursApprovalQueue() {
     <div className="flex w-full max-w-3xl flex-col gap-4">
       <div aria-live="polite">
         {actionError ? (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="font-mono text-sm text-destructive">
             {actionError}
           </p>
         ) : null}
@@ -139,27 +144,27 @@ export function HoursApprovalQueue() {
       <table className="w-full border-collapse text-left">
         <caption className="sr-only">Pending hour entries awaiting approval</caption>
         <thead>
-          <tr className="border-b border-zinc-300">
+          <tr className="border-b border-border">
             <th scope="col" className="p-2">
               <span className="sr-only">Select</span>
             </th>
-            <th scope="col" className="p-2 text-sm font-medium text-[#1a2a3a]">
+            <th scope="col" className="p-2 font-mono text-sm font-semibold text-foreground">
               Date
             </th>
-            <th scope="col" className="p-2 text-sm font-medium text-[#1a2a3a]">
+            <th scope="col" className="p-2 font-mono text-sm font-semibold text-foreground">
               Hours
             </th>
-            <th scope="col" className="p-2 text-sm font-medium text-[#1a2a3a]">
+            <th scope="col" className="p-2 font-mono text-sm font-semibold text-foreground">
               Description
             </th>
-            <th scope="col" className="p-2 text-sm font-medium text-[#1a2a3a]">
+            <th scope="col" className="p-2 font-mono text-sm font-semibold text-foreground">
               Actions
             </th>
           </tr>
         </thead>
         <tbody>
           {entries.map((entry) => (
-            <tr key={entry.id} className="border-b border-zinc-200">
+            <tr key={entry.id} className="border-b border-border">
               <td className="p-2">
                 <input
                   type="checkbox"
@@ -168,14 +173,14 @@ export function HoursApprovalQueue() {
                   aria-label={`Select entry for ${entry.date}, ${entry.hours} hours`}
                 />
               </td>
-              <td className="p-2 text-sm text-[#1a2a3a]">{entry.date}</td>
-              <td className="p-2 text-sm text-[#1a2a3a]">{entry.hours}</td>
-              <td className="p-2 text-sm text-[#1a2a3a]">{entry.description}</td>
+              <td className="p-2 font-mono text-sm text-foreground">{entry.date}</td>
+              <td className="p-2 font-mono text-sm text-foreground">{entry.hours}</td>
+              <td className="p-2 font-mono text-sm text-foreground">{entry.description}</td>
               <td className="p-2 text-sm">
                 <button
                   type="button"
                   onClick={() => handleReject(entry.id)}
-                  className="rounded border border-zinc-400 px-3 py-1 font-medium text-[#1a2a3a]"
+                  className="rounded-full border border-border px-4 py-1.5 font-mono text-sm font-bold text-foreground transition-colors hover:border-primary hover:text-primary"
                 >
                   Reject{" "}
                   <span className="sr-only">
@@ -192,7 +197,7 @@ export function HoursApprovalQueue() {
         type="button"
         onClick={handleBulkApprove}
         disabled={selected.size === 0}
-        className="w-fit rounded bg-[#ff5a1f] px-4 py-2 font-medium text-white disabled:opacity-50"
+        className="w-fit rounded-full bg-primary px-6 py-3 font-mono text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         Approve selected ({selected.size})
       </button>

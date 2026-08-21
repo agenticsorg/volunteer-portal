@@ -6,7 +6,12 @@ import { useId, useState } from "react";
 import type { ApplyToProjectRequest } from "@/generated/ApplyToProjectRequest";
 import type { ProjectSummaryDto } from "@/generated/ProjectSummary";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+// Relative by default so requests proxy through Next's own server
+// (next.config.ts's rewrites()), avoiding both Private Network Access
+// blocks and cross-origin cookie issues in dev. Set
+// NEXT_PUBLIC_API_BASE_URL to a real absolute URL only for a deployment
+// where the frontend calls the api crate directly cross-origin.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
 type SearchStatus = "idle" | "loading" | "error" | "done";
 
@@ -57,7 +62,7 @@ export function ProjectDirectory() {
     <div className="flex w-full max-w-2xl flex-col gap-6">
       <form onSubmit={handleSearch} className="flex items-end gap-3" noValidate>
         <div className="flex flex-col gap-1">
-          <Label.Root htmlFor={skillId} className="text-sm font-medium text-[#1a2a3a]">
+          <Label.Root htmlFor={skillId} className="font-mono text-sm font-semibold text-foreground">
             Search by skill
           </Label.Root>
           <input
@@ -67,13 +72,13 @@ export function ProjectDirectory() {
             placeholder="Carpentry"
             value={skill}
             onChange={(e) => setSkill(e.target.value)}
-            className="rounded border border-zinc-400 px-3 py-2"
+            className="rounded-lg border border-input bg-background px-4 py-2 font-mono text-foreground focus:border-primary focus:outline-none"
           />
         </div>
         <button
           type="submit"
           disabled={status === "loading" || skill.trim().length === 0}
-          className="rounded bg-[#ff5a1f] px-4 py-2 font-medium text-white disabled:opacity-50"
+          className="rounded-full bg-primary px-6 py-2 font-mono text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {status === "loading" ? "Searching…" : "Search"}
         </button>
@@ -81,12 +86,12 @@ export function ProjectDirectory() {
 
       <div aria-live="polite">
         {status === "error" && error ? (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="font-mono text-sm text-destructive">
             {error}
           </p>
         ) : null}
         {status === "done" && projects.length === 0 ? (
-          <p role="status" className="text-sm text-[#1a2a3a]">
+          <p role="status" className="font-mono text-sm text-foreground">
             No open projects match that skill right now.
           </p>
         ) : null}
@@ -146,25 +151,25 @@ function ProjectCard({ project }: { project: ProjectSummaryDto }) {
   return (
     <section
       aria-labelledby={headingId}
-      className="flex flex-col gap-3 rounded border border-zinc-300 p-4"
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
     >
       <div>
-        <h2 id={headingId} className="text-lg font-semibold text-[#1a2a3a]">
+        <h2 id={headingId} className="font-sans text-xl font-semibold text-foreground">
           {project.name}
         </h2>
-        <p className="text-sm text-[#1a2a3a]">
+        <p className="font-mono text-sm text-foreground">
           {project.project_type === "event" ? "Event" : "Project"}
         </p>
       </div>
 
       {status === "success" ? (
-        <p role="status" className="text-sm text-[#1a2a3a]">
+        <p role="status" className="font-mono text-sm text-foreground">
           Application submitted -- the project lead will review it.
         </p>
       ) : (
         <form onSubmit={handleApply} className="flex items-end gap-3" noValidate>
           <div className="flex flex-col gap-1">
-            <Label.Root htmlFor={roleId} className="text-sm font-medium text-[#1a2a3a]">
+            <Label.Root htmlFor={roleId} className="font-mono text-sm font-semibold text-foreground">
               Role
             </Label.Root>
             <input
@@ -175,13 +180,13 @@ function ProjectCard({ project }: { project: ProjectSummaryDto }) {
               placeholder="Carpenter"
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="rounded border border-zinc-400 px-3 py-2"
+              className="rounded-lg border border-input bg-background px-4 py-2 font-mono text-foreground focus:border-primary focus:outline-none"
             />
           </div>
           <button
             type="submit"
             disabled={status === "submitting" || role.trim().length === 0}
-            className="rounded bg-[#1a2a3a] px-4 py-2 font-medium text-white disabled:opacity-50"
+            className="rounded-full bg-secondary px-6 py-2 font-mono text-sm font-bold text-secondary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {status === "submitting" ? "Applying…" : "Apply"}
           </button>
@@ -190,7 +195,7 @@ function ProjectCard({ project }: { project: ProjectSummaryDto }) {
 
       <div aria-live="polite">
         {status === "error" && error ? (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="font-mono text-sm text-destructive">
             {error}
           </p>
         ) : null}

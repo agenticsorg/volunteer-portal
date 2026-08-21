@@ -5,7 +5,12 @@ import { useId, useState } from "react";
 
 import type { LogHoursRequest } from "@/generated/LogHoursRequest";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+// Relative by default so requests proxy through Next's own server
+// (next.config.ts's rewrites()), avoiding both Private Network Access
+// blocks and cross-origin cookie issues in dev. Set
+// NEXT_PUBLIC_API_BASE_URL to a real absolute URL only for a deployment
+// where the frontend calls the api crate directly cross-origin.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
 /**
  * concept.md section 5's self-logged entry: date, hours, short
@@ -62,7 +67,7 @@ export function LogHoursForm({ assignmentId }: { assignmentId: string }) {
 
   if (status === "success") {
     return (
-      <p role="status" className="text-[#1a2a3a]">
+      <p role="status" className="font-mono text-foreground">
         Hours submitted -- the project lead will review them.
       </p>
     );
@@ -71,7 +76,7 @@ export function LogHoursForm({ assignmentId }: { assignmentId: string }) {
   return (
     <form onSubmit={handleSubmit} className="flex w-full max-w-md flex-col gap-5" noValidate>
       <div className="flex flex-col gap-1">
-        <Label.Root htmlFor={dateId} className="text-sm font-medium text-[#1a2a3a]">
+        <Label.Root htmlFor={dateId} className="font-mono text-sm font-semibold text-foreground">
           Date
         </Label.Root>
         <input
@@ -81,12 +86,12 @@ export function LogHoursForm({ assignmentId }: { assignmentId: string }) {
           required
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="rounded border border-zinc-400 px-3 py-2"
+          className="rounded-lg border border-input bg-background px-4 py-2 font-mono text-foreground focus:border-primary focus:outline-none"
         />
       </div>
 
       <div className="flex flex-col gap-1">
-        <Label.Root htmlFor={hoursId} className="text-sm font-medium text-[#1a2a3a]">
+        <Label.Root htmlFor={hoursId} className="font-mono text-sm font-semibold text-foreground">
           Hours
         </Label.Root>
         <input
@@ -100,12 +105,12 @@ export function LogHoursForm({ assignmentId }: { assignmentId: string }) {
           placeholder="2.5"
           value={hours}
           onChange={(e) => setHours(e.target.value)}
-          className="rounded border border-zinc-400 px-3 py-2"
+          className="rounded-lg border border-input bg-background px-4 py-2 font-mono text-foreground focus:border-primary focus:outline-none"
         />
       </div>
 
       <div className="flex flex-col gap-1">
-        <Label.Root htmlFor={descriptionId} className="text-sm font-medium text-[#1a2a3a]">
+        <Label.Root htmlFor={descriptionId} className="font-mono text-sm font-semibold text-foreground">
           What did you do?
         </Label.Root>
         <input
@@ -116,13 +121,13 @@ export function LogHoursForm({ assignmentId }: { assignmentId: string }) {
           placeholder="Cleared brush along the east trail"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className="rounded border border-zinc-400 px-3 py-2"
+          className="rounded-lg border border-input bg-background px-4 py-2 font-mono text-foreground focus:border-primary focus:outline-none"
         />
       </div>
 
       <div aria-live="polite">
         {status === "error" && error ? (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="font-mono text-sm text-destructive">
             {error}
           </p>
         ) : null}
@@ -131,7 +136,7 @@ export function LogHoursForm({ assignmentId }: { assignmentId: string }) {
       <button
         type="submit"
         disabled={status === "submitting" || !date || !hours || !description}
-        className="rounded bg-[#ff5a1f] px-4 py-2 font-medium text-white disabled:opacity-50"
+        className="rounded-full bg-primary px-6 py-3 font-mono text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         {status === "submitting" ? "Submitting…" : "Log hours"}
       </button>
