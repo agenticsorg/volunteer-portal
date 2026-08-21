@@ -22,9 +22,14 @@ describe("applyToShift / decideApplication / withdrawApplication (integration)",
   const track = <T extends { id: string }>(bucket: string[], row: T) => (bucket.push(row.id), row);
 
   afterAll(async () => {
-    await prisma.volunteeringDomainEvent.deleteMany({});
-    await prisma.application.deleteMany({});
-    await prisma.hourEntry.deleteMany({});
+    // Scoped to this file's own opportunityIds — never an unscoped
+    // deleteMany({}), which would race with other integration test files'
+    // still-running tests against the same shared testcontainer Postgres
+    // (Vitest runs integration test files in parallel by default) and
+    // wipe their in-progress rows out from under them.
+    await prisma.volunteeringDomainEvent.deleteMany({ where: { aggregateId: { in: opportunityIds } } });
+    await prisma.application.deleteMany({ where: { shift: { opportunityId: { in: opportunityIds } } } });
+    await prisma.hourEntry.deleteMany({ where: { opportunityId: { in: opportunityIds } } });
     await prisma.shift.deleteMany({ where: { opportunityId: { in: opportunityIds } } });
     await prisma.opportunity.deleteMany({ where: { id: { in: opportunityIds } } });
     await prisma.roleAssignment.deleteMany({ where: { subjectId: { in: personIds } } });
