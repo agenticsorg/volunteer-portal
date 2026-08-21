@@ -111,6 +111,20 @@ export type { RetentionSweepDataClassResult, RetentionSweepResult } from "./appl
 export { SUPPORTED_REPORT_TYPES, isSupportedReportType } from "./domain/reportTypes";
 export type { SupportedReportType } from "./domain/reportTypes";
 
+// --- `ReportDefinition.filters` shape/resolution for `approved_hours_summary`
+// (exported for the same reason every other module's own domain-layer pure
+// functions are: unit-test coverage per ADR-0015's unit/integration split,
+// through this module's own index.ts barrel like everything else here). ---
+export { assertValidFiltersForReportType, resolveApprovedHoursDateWindow } from "./domain/reportFilters";
+export type { ApprovedHoursSummaryFilters } from "./domain/reportFilters";
+
+// --- R2 export-file storage adapter (ADR-0011) — exported for unit-test
+// coverage of the real SigV4 signing logic, same precedent as
+// `modules/training`/`modules/moderation`/`modules/community`'s own
+// identically-shaped exports of their own `infra/cloudflareR2Client.ts`. ---
+export { cloudflareR2Adapter, signS3PutRequest, presignS3GetUrl } from "./infra/cloudflareR2Client";
+export type { ExportFileStorageAdapter, SignedS3PutRequest, PresignedGetUrl } from "./infra/cloudflareR2Client";
+
 export {
   ExportJobDownloadExpiredError,
   ExportJobNotDownloadableError,
