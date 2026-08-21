@@ -1244,3 +1244,305 @@ model GamificationProcessedEvent {
   @@map("processed_events")
   @@schema("gamification")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 6 — Community & Social: schema only (activity feed, kudos, teams,
+// mentorship, and the inbound-event idempotency ledger)
+// ---------------------------------------------------------------------------
+//
+// The Post, FeedEntry, Kudos, Team, TeamMembership, Mentorship, and
+// ProcessedEvent shapes from docs/ddd/community-social.md, matching that
+// doc's own Schema Sketch field-for-field. `community.domain_events`
+// (`CommunityDomainEvent`, above) already exists from Phase 1; this phase
+// adds the aggregate/read-model tables plus the inbound-event idempotency
+// ledger. No use cases, no event consumers, no API in this migration — those
+// are a later stage; this migration is data model only.
+//
+// `author_id`, `author_chapter_id`, `scope_id` (on both Post and FeedEntry),
+// `hidden_by_moderation_action_id`, `subject_person_id`,
+// `from_person_id`/`to_person_id`, `chapter_id`, `created_by_person_id`,
+// `person_id` (TeamMembership), and `mentor_person_id`/`mentee_person_id`
+// are all intentional soft references (plain columns, no relation, no FK) to
+// `identity.persons.id` / `identity.chapters.id` / `moderation.moderation_action.id`
+// — cross-schema, so no FK is possible or wanted, per the Schema Sketch's own
+// comments and ADR-0001. `TeamMembership.teamId` IS a real, same-schema FK
+// (`ON DELETE CASCADE`, per the Schema Sketch) because `Team` and
+// `TeamMembership` are both owned by this same `community` schema — the
+// no-cross-schema-FK rule applies only at bounded-context boundaries, not
+// within one.
+//
+// `community.processed_events` (`CommunityProcessedEvent` below) is keyed by
+// a single `id` column (the origin `domain_events.id`, a ULID) — matching
+// docs/ddd/community-social.md's Schema Sketch exactly, and deliberately
+// NOT `packages/outbox`'s generic `(consumer, event_id)` template
+// (`processed-events.template.sql`): this context has exactly one logical
+// consumer per source event (one handler per event type — `HandleBadgeAwarded`,
+// `HandleHoursApproved`, `HandleCourseCompleted`, `HandleStreakExtended`,
+// `HandlePersonAnonymized`), not several independent consumers draining the
+// same table, so a `consumer` column would add a dimension this context
+// doesn't have — same reasoning already recorded against
+// `gamification.processed_events` above, though that one additionally keys
+// on `event_type` (composite PK) where this one is a single-column PK,
+// per the Schema Sketch's literal DDL. A later stage building the actual
+// event handlers therefore writes its own idempotency-check helper
+// (`INSERT INTO community.processed_events (id, ...) ON CONFLICT (id) DO
+// NOTHING`) rather than calling `packages/outbox`'s `drainOutbox()`
+// unmodified.
+//
+// Several constructs in the Schema Sketch have no Prisma-schema-language
+// equivalent and are hand-authored in the migration SQL instead — same
+// precedent as every hand-authored addition already in this file's earlier
+// phases:
+//   - `chk_post_scope`, `chk_post_body_length`, `chk_post_attachments_max`,
+//     `chk_feed_entry_scope`, `chk_kudos_no_self`,
+//     `chk_kudos_achievement_ref_pair`, and `chk_mentorship_no_self` CHECK
+//     constraints (no stable `@@check` attribute in this Prisma version).
+//   - `idx_post_scope_created` and the kudos/mentorship indexes ARE plain
+//     (non-partial) indexes and so DO have `@@index` counterparts below;
+//     only the *partial* indexes/uniques are hand-authored:
+//     `idx_feed_entry_scope_created` (the chapter-scoped, reverse-
+//     chronological feed hot path — WHERE hidden_at IS NULL),
+//     `uq_feed_entry_native_source` / `uq_feed_entry_source_event` (the two
+//     halves of FeedEntry invariant 3's "exactly one row per native source /
+//     per projected source event" rule — mutually exclusive partial unique
+//     indexes, since exactly one of `source_event_id IS NULL` holds for any
+//     given row), `uq_team_chapter_name_active` (Team invariant 1),
+//     `uq_team_membership_open` (TeamMembership invariant 2) and
+//     `idx_team_membership_person`, and `uq_mentorship_open_mentee`
+//     (Mentorship invariant 2) — Prisma's schema language has no
+//     partial-index syntax.
+//   - `post.search_vector`, the ADR-0017 generated `tsvector` column, and
+//     its GIN index (`idx_post_search`) — per ADR-0017's own Implementation
+//     Notes, `GENERATED ALWAYS AS ... STORED` columns are not natively
+//     representable in Prisma's schema language, so this column is added via
+//     hand-authored migration SQL and modeled here only as
+//     `Unsupported("tsvector")` so Prisma is aware of it for introspection
+//     without trying to manage its generation logic. Built from `body` alone
+//     (single-field pattern, matching ADR-0017's own `community.posts`
+//     worked example exactly) — same `Unsupported()` round-trip gap as
+//     `volunteering.opportunities.search_vector` (see that model's comment
+//     above): any future `migrate dev` prompt proposing to drop
+//     `search_vector`'s default or drop `idx_post_search` against
+//     `community.post` should be declined, not applied.
+
+enum CommunityScopeType {
+  org
+  chapter
+
+  @@map("scope_type")
+  @@schema("community")
+}
+
+enum CommunityPostStatus {
+  published
+  hidden
+  deleted
+
+  @@map("post_status")
+  @@schema("community")
+}
+
+enum CommunityFeedEntryKind {
+  post
+  kudos_given
+  team_joined
+  mentorship_started
+  mentorship_completed
+  badge_awarded
+  hours_approved
+  course_completed
+  streak_extended
+
+  @@map("feed_entry_kind")
+  @@schema("community")
+}
+
+enum CommunityTeamStatus {
+  active
+  archived
+
+  @@map("team_status")
+  @@schema("community")
+}
+
+enum CommunityTeamRole {
+  lead
+  member
+
+  @@map("team_role")
+  @@schema("community")
+}
+
+enum CommunityMentorshipStatus {
+  requested
+  active
+  completed
+  declined
+  cancelled
+
+  @@map("mentorship_status")
+  @@schema("community")
+}
+
+// Aggregate root (docs/ddd/community-social.md "Post"). `authorDisplayName`
+// is a snapshot, refreshed to 'Deleted User' by a later stage's
+// `HandlePersonAnonymized` handler (not built in this phase).
+// `authorChapterId` is snapshotted at creation — the chapter the author
+// belonged to *when they posted* — so the scope invariant (Post invariant 1)
+// can be evaluated without a live cross-schema read on every write.
+// `attachments` is a JSONB array of the Attachment value object
+// (`{r2ObjectKey, contentType, sizeBytes, altText}`), 0-4 per Post, never
+// binary data. `searchVector` (ADR-0017) is a real `GENERATED ALWAYS AS ...
+// STORED` column added by hand-authored migration SQL — see the header
+// comment above.
+model Post {
+  id                          String               @id
+  authorId                    String               @map("author_id")
+  authorDisplayName           String               @map("author_display_name")
+  authorChapterId             String?              @map("author_chapter_id")
+  body                        String
+  scopeType                   CommunityScopeType   @map("scope_type")
+  scopeId                     String?              @map("scope_id")
+  attachments                 Json                 @default("[]")
+  status                      CommunityPostStatus  @default(published)
+  hiddenByModerationActionId  String?              @map("hidden_by_moderation_action_id")
+  createdAt                   DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
+  searchVector                Unsupported("tsvector")? @map("search_vector")
+
+  @@index([scopeType, scopeId, id(sort: Desc)], map: "idx_post_scope_created")
+  @@index([authorId], map: "idx_post_author")
+  @@map("post")
+  @@schema("community")
+}
+
+// Denormalized read-model projection (docs/ddd/community-social.md
+// "FeedEntry"), NOT an aggregate root and NOT a second source of truth for
+// native `kind = 'post'` rows — those are a thin pointer (`sourceId =
+// post.id`) resolved live via an in-schema join against `Post` at read
+// time (FeedEntry invariant 2), so a Post edit/hide propagates without
+// re-projecting. Every other `kind` is an immutable snapshot of a consumed
+// external event (FeedEntry invariant 1) and is never edited after
+// creation, only hidden (`hiddenAt`/`hiddenByModerationActionId`).
+// `sourceEventId` is NULL for native kinds and drives idempotent projection
+// for consumed kinds (FeedEntry invariant 3) — see the two partial unique
+// indexes hand-authored in the migration SQL.
+model FeedEntry {
+  id                          String                  @id
+  kind                        CommunityFeedEntryKind
+  scopeType                   CommunityScopeType      @map("scope_type")
+  scopeId                     String?                 @map("scope_id")
+  subjectPersonId             String                  @map("subject_person_id")
+  subjectDisplayName          String                  @map("subject_display_name")
+  sourceType                  String                  @map("source_type")
+  sourceId                    String                  @map("source_id")
+  sourceEventId               String?                 @map("source_event_id")
+  summary                     String
+  payload                     Json                    @default("{}")
+  hiddenAt                    DateTime?               @map("hidden_at") @db.Timestamptz(6)
+  hiddenByModerationActionId  String?                 @map("hidden_by_moderation_action_id")
+  createdAt                   DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("feed_entry")
+  @@schema("community")
+}
+
+// Entity (docs/ddd/community-social.md "Kudos"), not independently
+// aggregated beyond itself. `achievementRefType`/`achievementRefId` are an
+// optional, all-or-nothing polymorphic pointer (Kudos invariant 2) — stored
+// by type+ID only, never joined.
+model Kudos {
+  id                  String    @id
+  fromPersonId        String    @map("from_person_id")
+  toPersonId          String    @map("to_person_id")
+  note                String?
+  achievementRefType  String?   @map("achievement_ref_type")
+  achievementRefId    String?   @map("achievement_ref_id")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([toPersonId, id(sort: Desc)], map: "idx_kudos_to_person")
+  @@index([fromPersonId, id(sort: Desc)], map: "idx_kudos_from_person")
+  @@map("kudos")
+  @@schema("community")
+}
+
+// Aggregate root (docs/ddd/community-social.md "Team"): a named,
+// chapter-scoped guild — always chapter-scoped, never org-wide. Owns child
+// entity `TeamMembership` (below) via a real, same-schema FK.
+model Team {
+  id                  String                @id
+  chapterId           String                @map("chapter_id")
+  name                String
+  description         String                @default("")
+  createdByPersonId   String                @map("created_by_person_id")
+  status              CommunityTeamStatus   @default(active)
+  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  memberships TeamMembership[]
+
+  @@map("team")
+  @@schema("community")
+}
+
+// Child entity of `Team` (docs/ddd/community-social.md "TeamMembership"): a
+// membership row is never deleted, only closed (`leftAt`), to preserve
+// history — re-joining after leaving creates a new row (TeamMembership
+// invariant 2, enforced by the partial unique index hand-authored in the
+// migration SQL).
+model TeamMembership {
+  id         String              @id
+  teamId     String              @map("team_id")
+  personId   String              @map("person_id")
+  role       CommunityTeamRole   @default(member)
+  joinedAt   DateTime            @default(now()) @map("joined_at") @db.Timestamptz(6)
+  leftAt     DateTime?           @map("left_at") @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("team_membership")
+  @@schema("community")
+}
+
+// Aggregate root (docs/ddd/community-social.md "Mentorship"): a structured
+// mentor/mentee pairing moving through an explicit request -> active ->
+// completed lifecycle. Mentorship invariant 2 (at most one open
+// `requested`/`active` pairing per mentee) is enforced by the partial
+// unique index hand-authored in the migration SQL; no equivalent constraint
+// applies to `mentorPersonId` (a mentor may have several concurrent
+// mentees).
+model Mentorship {
+  id                String                      @id
+  mentorPersonId    String                      @map("mentor_person_id")
+  menteePersonId    String                      @map("mentee_person_id")
+  status            CommunityMentorshipStatus   @default(requested)
+  note              String?
+  requestedAt       DateTime                    @default(now()) @map("requested_at") @db.Timestamptz(6)
+  startedAt         DateTime?                   @map("started_at") @db.Timestamptz(6)
+  endedAt           DateTime?                   @map("ended_at") @db.Timestamptz(6)
+
+  @@index([mentorPersonId, status], map: "idx_mentorship_mentor")
+  @@map("mentorship")
+  @@schema("community")
+}
+
+// Idempotent inbound-event consumption ledger (ADR-0009;
+// docs/ddd/community-social.md "Processed Event" / Integration &
+// Anti-Corruption Notes). Keyed by a single `id` column (the origin
+// `domain_events.id`, a ULID) — see the header comment above for why this
+// deliberately diverges from `packages/outbox`'s generic
+// `(consumer, event_id)` template. A later stage's per-event-type handler
+// (`HandleBadgeAwarded`, `HandleHoursApproved`, `HandleCourseCompleted`,
+// `HandleStreakExtended`) attempts an insert here inside the same
+// transaction as any resulting `FeedEntry` write; a primary-key conflict
+// means the event was already processed and the transaction no-ops — the
+// second line of defense behind the `feed_entry` unique indexes themselves.
+model CommunityProcessedEvent {
+  id             String    @id
+  sourceContext  String    @map("source_context")
+  eventType      String    @map("event_type")
+  processedAt    DateTime  @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@map("processed_events")
+  @@schema("community")
+}
