@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { newId } from "@volunteer-portal/ulid";
+import { attachRequestMetadata, getRequestId } from "@volunteer-portal/observability";
 
 /**
  * Writes one row to this context's own transactional outbox
@@ -38,7 +39,10 @@ export async function publishModerationEvent(
       aggregateType: event.aggregateType,
       aggregateId: event.aggregateId,
       eventType: event.eventType,
-      payload: event.payload,
+      // ADR-0013 §"Correlation": stamps the current request's requestId
+      // onto payload._meta.requestId — see publishCommunityEvent.ts's
+      // matching doc comment for the full rationale.
+      payload: attachRequestMetadata(event.payload, getRequestId()),
     },
   });
 }

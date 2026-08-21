@@ -20,6 +20,7 @@
  */
 import { initTRPC, TRPCError } from "@trpc/server";
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
+import { generateRequestId, runWithRequestContext } from "@volunteer-portal/observability";
 import { getSupabaseAuthEnv } from "../auth/env";
 import { SUPABASE_COOKIE_OPTIONS } from "../auth/cookies";
 import { getVerifiedSession, type VerifiedSupabaseSession } from "../auth/verified-session";
@@ -34,6 +35,12 @@ import { findPersonByAuthId, type PersonSummary } from "@/modules/identity";
  * authenticated caller who has verified with Supabase but not yet
  * completed `identity.register` (the two cases a procedure distinguishes
  * via `supabaseSession` vs. `person` being null).
+ *
+ * `requestId` (ADR-0013 §"Correlation"): read back off the `x-request-id`
+ * header `proxy.ts` sets on every request; generated fresh only as a
+ * fallback for contexts built outside the normal HTTP path (a direct
+ * `createCallerFactory` caller in an integration test, or a request that
+ * somehow reached this route without going through `proxy.ts`'s matcher).
  */
 export async function createTRPCContext(opts: { headers: Headers }) {
   const { url, anonKey } = getSupabaseAuthEnv();
@@ -52,8 +59,9 @@ export async function createTRPCContext(opts: { headers: Headers }) {
   const person = supabaseSession
     ? await findPersonByAuthId(prisma, supabaseSession.supabaseAuthId)
     : null;
+  const requestId = opts.headers.get("x-request-id") ?? generateRequestId();
 
-  return { headers: opts.headers, prisma, supabaseSession, person };
+  return { headers: opts.headers, prisma, supabaseSession, person, requestId };
 }
 
 export type Context = Awaited<ReturnType<typeof createTRPCContext>>;
@@ -72,8 +80,23 @@ export const router = t.router;
  */
 export const createCallerFactory = t.createCallerFactory;
 
+/**
+ * Binds `ctx.requestId` as the current `requestContext` (ADR-0013
+ * §"Correlation") for the duration of this procedure call — so any code
+ * invoked anywhere underneath the resolver (a `publish*Event` helper deep
+ * inside a use case, the structured logger, an `errorReporter` capture)
+ * can read it back via `getRequestId()` without it being threaded through
+ * every intermediate function's parameters. Applied once, at the base
+ * procedure every other procedure builder in this file chains off of, so
+ * it covers `publicProcedure`/`sessionProcedure`/`protectedProcedure`
+ * uniformly.
+ */
+const withRequestContext = t.procedure.use(({ ctx, next }) => {
+  return runWithRequestContext({ requestId: ctx.requestId }, () => next());
+});
+
 /** Base procedure with no auth requirement. */
-export const publicProcedure = t.procedure;
+export const publicProcedure = withRequestContext;
 
 /**
  * Requires a verified Supabase session, but not yet a registered `Person`
@@ -81,7 +104,7 @@ export const publicProcedure = t.procedure;
  * has authenticated with Supabase but has no `Person` row yet). Narrows
  * `ctx.supabaseSession` to non-null for the resolver.
  */
-export const sessionProcedure = t.procedure.use(({ ctx, next }) => {
+export const sessionProcedure = withRequestContext.use(({ ctx, next }) => {
   if (!ctx.supabaseSession) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "No verified Supabase session." });
   }
@@ -96,7 +119,7 @@ export const sessionProcedure = t.procedure.use(({ ctx, next }) => {
  * narrower "is anybody logged in and registered at all" guard every
  * privileged procedure will layer `can()` on top of later.
  */
-export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
+export const protectedProcedure = withRequestContext.use(({ ctx, next }) => {
   if (!ctx.person) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "No registered person for this session." });
   }

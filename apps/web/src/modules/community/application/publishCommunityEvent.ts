@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { newId } from "@volunteer-portal/ulid";
+import { attachRequestMetadata, getRequestId } from "@volunteer-portal/observability";
 
 /**
  * Writes one row to this context's own transactional outbox
@@ -12,6 +13,12 @@ import { newId } from "@volunteer-portal/ulid";
  * table for `PostCreated`, `KudosGiven`, `TeamCreated`, `TeamJoined`,
  * `MentorshipRequested`, `MentorshipStarted` — a future infra-layer worker
  * task's job, not this stage's.
+ *
+ * ADR-0013 §"Correlation": stamps the current request's `requestId` (see
+ * `requestContext.ts`) onto `payload._meta.requestId` before writing, so a
+ * graphile-worker job later draining this row can log the originating
+ * request. A no-op when there is no current request context (e.g. this is
+ * called from a script or a test outside `runWithRequestContext`).
  */
 export interface CommunityEventInput {
   eventType: "PostCreated" | "KudosGiven" | "TeamCreated" | "TeamJoined" | "MentorshipRequested" | "MentorshipStarted";
@@ -30,7 +37,7 @@ export async function publishCommunityEvent(
       aggregateType: event.aggregateType,
       aggregateId: event.aggregateId,
       eventType: event.eventType,
-      payload: event.payload,
+      payload: attachRequestMetadata(event.payload, getRequestId()),
     },
   });
 }

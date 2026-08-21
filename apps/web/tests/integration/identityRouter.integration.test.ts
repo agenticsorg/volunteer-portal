@@ -58,6 +58,7 @@ describe("identityRouter (integration)", () => {
         headers: new Headers(),
         prisma,
         supabaseSession: null,
+        requestId: "test-request-id",
         person: null,
       });
       const summary = await caller.getPersonSummary({ personId: "01ARZ3NDEKTSV4RRFFQ69G5FAV" });
@@ -85,7 +86,7 @@ describe("identityRouter (integration)", () => {
       });
       trackChapter(created.chapterId);
 
-      const publicCaller = createCaller({ headers: new Headers(), prisma, supabaseSession: null, person: null });
+      const publicCaller = createCaller({ headers: new Headers(), prisma, supabaseSession: null, requestId: "test-request-id", person: null });
       const list = await publicCaller.chapters.list({ status: "active" });
       expect(list.some((c) => c.chapterId === created.chapterId)).toBe(true);
     });

@@ -8,7 +8,7 @@
     "build": "pnpm --filter web build",
     "lint": "pnpm --filter web lint",
     "typecheck": "pnpm -r --if-present run typecheck",
-    "test:unit": "pnpm --filter web test:unit",
+    "test:unit": "pnpm -r --if-present run test:unit",
     "test:integration": "pnpm --filter web test:integration",
     "e2e:smoke": "pnpm --filter web e2e:smoke",
     "db:up": "docker compose up -d",
