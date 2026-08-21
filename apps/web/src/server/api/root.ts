@@ -4,8 +4,8 @@
  * context (docs/ddd/00-context-map.md), matching the eight module folders
  * under `src/modules/`.
  *
- * All Phase 0 sub-routers are empty (`router({})`); this file only proves
- * the composition and mount point, not any domain behavior.
+ * Phase 9 (docs/ddd/admin-reporting.md) filled in the last empty sub-router,
+ * `adminRouter` — every sub-router now carries real procedures.
  */
 import { router } from "./trpc";
 import { identityRouter } from "./routers/identity";

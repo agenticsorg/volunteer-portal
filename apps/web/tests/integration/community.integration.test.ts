@@ -53,19 +53,55 @@ describe("Community (integration)", () => {
   const badgeIds: string[] = [];
   const opportunityIds: string[] = [];
   const courseIds: string[] = [];
+  // `community.processed_events` is keyed by the origin inbound event's own
+  // `sourceEventId` (see that Prisma model's doc comment) — not by any
+  // person/aggregate id — so, unlike every other table below, it can't be
+  // rediscovered afterward by querying for this file's own personIds. Every
+  // `consumeInboundEvent()` call in this file's tests pushes its
+  // `sourceEventId` here explicitly instead.
+  const processedEventIds: string[] = [];
   const track = (id: string) => (personIds.push(id), id);
 
   afterAll(async () => {
-    await prisma.communityDomainEvent.deleteMany({});
-    await prisma.communityProcessedEvent.deleteMany({});
-    await prisma.feedEntry.deleteMany({});
-    await prisma.kudos.deleteMany({});
-    await prisma.teamMembership.deleteMany({});
-    await prisma.team.deleteMany({});
-    await prisma.mentorship.deleteMany({});
-    await prisma.post.deleteMany({});
-    await prisma.gamificationDomainEvent.deleteMany({});
-    await prisma.gamificationProcessedEvent.deleteMany({});
+    // Scoped to this file's own personIds — never an unscoped
+    // deleteMany({}), which would race with other integration test files'
+    // still-running tests against the same shared testcontainer Postgres
+    // (Vitest runs integration test files in parallel by default) and
+    // wipe their in-progress rows out from under them. Every Post/Kudos/
+    // Team/TeamMembership/Mentorship this file's calls create carries this
+    // file's own tracked personId, so those tables are queried first to
+    // find the aggregate ids `communityDomainEvent` needs to be scoped by
+    // in turn.
+    const [postIds, kudosIds, teamIds, teamMembershipIds, mentorshipIds, badgeAwards] = await Promise.all([
+      prisma.post.findMany({ where: { authorId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+      prisma.kudos
+        .findMany({ where: { OR: [{ fromPersonId: { in: personIds } }, { toPersonId: { in: personIds } }] }, select: { id: true } })
+        .then((rows) => rows.map((r) => r.id)),
+      prisma.team.findMany({ where: { createdByPersonId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+      prisma.teamMembership.findMany({ where: { personId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+      prisma.mentorship
+        .findMany({ where: { OR: [{ mentorPersonId: { in: personIds } }, { menteePersonId: { in: personIds } }] }, select: { id: true } })
+        .then((rows) => rows.map((r) => r.id)),
+      prisma.badgeAward.findMany({ where: { personId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+    ]);
+
+    await prisma.communityDomainEvent.deleteMany({
+      where: { aggregateId: { in: [...postIds, ...kudosIds, ...teamIds, ...teamMembershipIds, ...mentorshipIds] } },
+    });
+    await prisma.communityProcessedEvent.deleteMany({ where: { id: { in: processedEventIds } } });
+    await prisma.feedEntry.deleteMany({ where: { subjectPersonId: { in: personIds } } });
+    await prisma.kudos.deleteMany({ where: { id: { in: kudosIds } } });
+    await prisma.teamMembership.deleteMany({ where: { id: { in: teamMembershipIds } } });
+    await prisma.team.deleteMany({ where: { id: { in: teamIds } } });
+    await prisma.mentorship.deleteMany({ where: { id: { in: mentorshipIds } } });
+    await prisma.post.deleteMany({ where: { id: { in: postIds } } });
+    // gamificationDomainEvent's only rows this file produces are this
+    // file's own `awardBadge()` calls (aggregateType "BadgeAward",
+    // aggregateId = badgeAwardId) — this file never drives
+    // gamification's OWN consumeInboundEvent, so
+    // gamificationProcessedEvent has nothing of this file's in it and
+    // needs no cleanup call here at all.
+    await prisma.gamificationDomainEvent.deleteMany({ where: { aggregateId: { in: badgeAwards } } });
     await prisma.badgeAward.deleteMany({ where: { personId: { in: personIds } } });
     await prisma.badge.deleteMany({ where: { id: { in: badgeIds } } });
     await prisma.opportunity.deleteMany({ where: { id: { in: opportunityIds } } });
@@ -545,6 +581,7 @@ describe("Community (integration)", () => {
         eventType: sourceEvent.eventType,
         payload: sourceEvent.payload,
       };
+      processedEventIds.push(inboundEvent.sourceEventId);
       const result = await consumeInboundEvent(prisma, inboundEvent);
       expect(result).toEqual({ processed: true, recognized: true });
 
@@ -618,6 +655,7 @@ describe("Community (integration)", () => {
         },
       };
 
+      processedEventIds.push(event.sourceEventId);
       const result = await consumeInboundEvent(prisma, event);
       expect(result).toEqual({ processed: true, recognized: true });
 
@@ -670,6 +708,7 @@ describe("Community (integration)", () => {
         },
       };
 
+      processedEventIds.push(event.sourceEventId);
       await consumeInboundEvent(prisma, event);
 
       const feedEntry = await prisma.feedEntry.findFirstOrThrow({ where: { sourceEventId: event.sourceEventId } });
@@ -688,6 +727,7 @@ describe("Community (integration)", () => {
         eventType: "StreakExtended",
         payload: { personId: p.id, activityType: "shift_cadence", currentLength: 3 },
       };
+      processedEventIds.push(nonMilestone.sourceEventId);
       const nonMilestoneResult = await consumeInboundEvent(prisma, nonMilestone);
       expect(nonMilestoneResult).toEqual({ processed: true, recognized: true }); // acknowledged (processed_events written)...
       const noFeedEntry = await prisma.feedEntry.findFirst({ where: { sourceEventId: nonMilestone.sourceEventId } });
@@ -701,6 +741,7 @@ describe("Community (integration)", () => {
         eventType: "StreakExtended",
         payload: { personId: p.id, activityType: "shift_cadence", currentLength: 7 },
       };
+      processedEventIds.push(milestone.sourceEventId);
       await consumeInboundEvent(prisma, milestone);
       const feedEntry = await prisma.feedEntry.findFirstOrThrow({ where: { sourceEventId: milestone.sourceEventId } });
       expect(feedEntry.kind).toBe("streak_extended");

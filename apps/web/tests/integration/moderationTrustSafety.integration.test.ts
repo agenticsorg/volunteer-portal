@@ -33,13 +33,31 @@ describe("Moderation & Trust/Safety — Phase 7 completion bar (integration)", (
   const track = (id: string) => (personIds.push(id), id);
 
   afterAll(async () => {
-    await prisma.moderationDomainEvent.deleteMany({});
-    await prisma.report.deleteMany({});
-    await prisma.moderationAction.deleteMany({});
-    await prisma.communityDomainEvent.deleteMany({});
-    await prisma.feedEntry.deleteMany({});
-    await prisma.post.deleteMany({});
-    await prisma.kudos.deleteMany({});
+    // Scoped to this file's own personIds — never an unscoped
+    // deleteMany({}), which would race with other integration test files'
+    // still-running tests against the same shared testcontainer Postgres
+    // (Vitest runs integration test files in parallel by default) and
+    // wipe their in-progress rows out from under them. Every Report/
+    // ModerationAction/Post/Kudos this file's calls create carries a
+    // reporter/target/author/giver-or-recipient person id, so this file's
+    // own personIds are enough to find every row's id without a separate
+    // tracked-id array.
+    const [reportIds, moderationActionIds, postIds, kudosIds] = await Promise.all([
+      prisma.report.findMany({ where: { reporterPersonId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+      prisma.moderationAction.findMany({ where: { targetPersonId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+      prisma.post.findMany({ where: { authorId: { in: personIds } }, select: { id: true } }).then((rows) => rows.map((r) => r.id)),
+      prisma.kudos
+        .findMany({ where: { OR: [{ fromPersonId: { in: personIds } }, { toPersonId: { in: personIds } }] }, select: { id: true } })
+        .then((rows) => rows.map((r) => r.id)),
+    ]);
+
+    await prisma.moderationDomainEvent.deleteMany({ where: { aggregateId: { in: [...reportIds, ...moderationActionIds] } } });
+    await prisma.report.deleteMany({ where: { id: { in: reportIds } } });
+    await prisma.moderationAction.deleteMany({ where: { id: { in: moderationActionIds } } });
+    await prisma.communityDomainEvent.deleteMany({ where: { aggregateId: { in: [...postIds, ...kudosIds] } } });
+    await prisma.feedEntry.deleteMany({ where: { subjectPersonId: { in: personIds } } });
+    await prisma.post.deleteMany({ where: { id: { in: postIds } } });
+    await prisma.kudos.deleteMany({ where: { id: { in: kudosIds } } });
     await prisma.roleAssignment.deleteMany({ where: { subjectId: { in: personIds } } });
     await prisma.person.deleteMany({ where: { id: { in: personIds } } });
     await prisma.chapter.deleteMany({ where: { id: { in: chapterIds } } });

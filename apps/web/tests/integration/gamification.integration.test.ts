@@ -33,9 +33,32 @@ describe("Gamification (integration)", () => {
   const badgeIds: string[] = [];
 
   afterAll(async () => {
-    await prisma.gamificationDomainEvent.deleteMany({});
-    await prisma.gamificationProcessedEvent.deleteMany({});
-    await prisma.leaderboardSnapshot.deleteMany({});
+    // Scoped to this file's own personIds — never an unscoped
+    // deleteMany({}), which would race with other integration test files'
+    // still-running tests against the same shared testcontainer Postgres
+    // (Vitest runs integration test files in parallel by default) and
+    // wipe their in-progress rows out from under them. Every
+    // PointsLedgerEntry/BadgeAward/Streak this file's calls create carries
+    // this file's own tracked personId, so those (already-scoped) tables
+    // are queried first to find the aggregate/source-event ids that
+    // `gamificationDomainEvent`/`gamificationProcessedEvent` need to be
+    // scoped by in turn — every recognized inbound event this file
+    // processes (HoursApproved/CourseCompleted) always writes exactly one
+    // PointsLedgerEntry row carrying that same sourceEventId (see
+    // handleHoursApproved.ts/handleCourseCompleted.ts, both delegating to
+    // recordPointsForEvent), so `pointsLedgerEntry.sourceEventId` reliably
+    // covers every `gamificationProcessedEvent` row this file wrote too.
+    const [ledgerEntries, badgeAwards, streaks] = await Promise.all([
+      prisma.pointsLedgerEntry.findMany({ where: { personId: { in: personIds } }, select: { id: true, sourceEventId: true } }),
+      prisma.badgeAward.findMany({ where: { personId: { in: personIds } }, select: { id: true } }),
+      prisma.streak.findMany({ where: { personId: { in: personIds } }, select: { id: true } }),
+    ]);
+    const aggregateIds = [...ledgerEntries.map((e) => e.id), ...badgeAwards.map((a) => a.id), ...streaks.map((s) => s.id)];
+    const sourceEventIds = ledgerEntries.map((e) => e.sourceEventId);
+
+    await prisma.gamificationDomainEvent.deleteMany({ where: { aggregateId: { in: aggregateIds } } });
+    await prisma.gamificationProcessedEvent.deleteMany({ where: { sourceEventId: { in: sourceEventIds } } });
+    await prisma.leaderboardSnapshot.deleteMany({ where: { personId: { in: personIds } } });
     await prisma.badgeAward.deleteMany({ where: { personId: { in: personIds } } });
     await prisma.badge.deleteMany({ where: { id: { in: badgeIds } } });
     await prisma.streak.deleteMany({ where: { personId: { in: personIds } } });

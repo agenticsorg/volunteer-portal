@@ -1914,3 +1914,178 @@ model NotificationsProcessedEvent {
   @@map("processed_events")
   @@schema("notifications")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 9 — Admin & Reporting: schema additions (ReportDefinition, ExportJob)
+// ---------------------------------------------------------------------------
+//
+// The ReportDefinition and ExportJob aggregates from docs/ddd/admin-
+// reporting.md, matching that doc's own Schema Sketch field-for-field.
+// `admin.audit_log` (`AuditLog`) and `admin.domain_events`
+// (`AdminDomainEvent`) already exist from Phase 1 (see above) and are not
+// touched by this migration. `admin.retention_policies` is NOT added here —
+// it is not yet present in this schema despite being summarized in the DDD
+// doc's "RetentionPolicy" entity section for schema completeness; adding it
+// is out of this stage's own explicit Build list (report_definition and
+// export_job only) and is left for whichever later stage actually builds
+// the retention_sweep job. No use cases, no event consumers, no API in this
+// migration — those are a later stage; this migration is data model only.
+//
+// `created_by_person_id` (ReportDefinition) and `requested_by_person_id`
+// (ExportJob) are intentional soft references (plain columns, no relation,
+// no FK) to `identity.person.id` — cross-schema, so no FK is possible or
+// wanted, per the Schema Sketch's own comments and ADR-0001.
+// `ExportJob.identityDsarRequestId` is likewise a soft reference to
+// `identity.dsar_requests.id` — no FK, per the Schema Sketch's own comment
+// ("no FK") and ADR-0014's orchestration-as-a-command boundary (Integration
+// & Anti-Corruption Notes: "DSAR orchestration is a command, not a data
+// pipe").
+// `ExportJob.reportDefinitionId` IS a real, same-schema FK (no explicit
+// `onDelete` in the Schema Sketch's literal DDL, so Prisma's default
+// applies) because `ReportDefinition` and `ExportJob` are both owned by
+// this same `admin` schema — the no-cross-schema-FK rule applies only at
+// bounded-context boundaries, not within one.
+//
+// Matching the Schema Sketch's own literal DDL exactly, `type`, `status`,
+// and `output_file_format` are plain `TEXT NOT NULL`/`TEXT` with inline
+// `CHECK (... IN (...))` constraints, not Postgres enums — same convention
+// already used for `notifications.notification.channel`/
+// `delivery_attempt.status` (see that phase's own header note): an
+// application-enforced closed set that avoids a migration every time a new
+// job type/status is added, and the sketch itself writes `CHECK` inline
+// rather than `CREATE TYPE`. Every CHECK constraint below is hand-authored
+// in the migration SQL (no stable `@@check` attribute in this Prisma
+// version) — same precedent as every other hand-authored CHECK constraint
+// already in this file's earlier phases.
+//
+// `group_by` and `output_formats` are `TEXT[]`, same `String[]` Prisma
+// mapping already established by `volunteering.opportunity.skills_required`
+// / `prerequisite_course_ids` — no enum, no join table, matching the
+// sketch's literal `TEXT[]` columns.
+//
+// The two partial indexes the Schema Sketch specifies
+// (`export_job_active_idx` on `(status, created_at) WHERE status IN
+// ('queued','running')`, and `export_job_dsar_request_idx` on
+// `(identity_dsar_request_id) WHERE identity_dsar_request_id IS NOT NULL`)
+// have no Prisma-schema-language equivalent and are hand-authored in the
+// migration SQL only, intentionally with no `@@index` counterpart here —
+// same precedent as every other hand-authored partial index already in
+// this file's earlier phases.
+
+// Aggregate root (docs/ddd/admin-reporting.md "ReportDefinition"): a saved,
+// reusable report configuration. `hourlyValuationRateCents` is per-
+// definition, never a global config value, so different reports can use
+// different rates simultaneously and a rate edit never silently rewrites
+// the meaning of a report someone is about to run — see the load-bearing
+// snapshot invariant on `ExportJob.params` below, which is what actually
+// makes an already-completed report immune to this column ever changing.
+model ReportDefinition {
+  id                       String   @id
+  name                     String
+  description              String?
+  reportType               String   @map("report_type")
+  filters                  Json     @default("{}")
+  groupBy                  String[] @default([]) @map("group_by")
+  hourlyValuationRateCents Int      @default(3614) @map("hourly_valuation_rate_cents")
+  currency                 String   @default("USD")
+  outputFormats            String[] @default(["csv", "pdf"]) @map("output_formats")
+  isActive                 Boolean  @default(true) @map("is_active")
+  createdByPersonId        String   @map("created_by_person_id")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  exportJobs ExportJob[]
+
+  @@index([isActive, createdAt(sort: Desc)], map: "report_definition_active_idx")
+  @@map("report_definition")
+  @@schema("admin")
+}
+
+// Aggregate root (docs/ddd/admin-reporting.md "ExportJob"): one concrete,
+// executed (or in-flight) export — immutable once `completed`/`failed`, a
+// new run is always a new row, never a re-opened one (invariant 3).
+// Invariant 1, the snapshotted-valuation-rate rule ("params.
+// hourlyValuationRateCents is fixed at RequestExportJob time... the dollar
+// figures in a downloaded grant packet never silently change meaning after
+// the fact"), lives entirely in `params` (JSONB, copied at request time,
+// never re-read live from `ReportDefinition`) — there is no DB-level
+// mechanism that could enforce "never changes after the fact" beyond
+// invariant 3's terminal-state immutability, which this schema also does
+// not defensively trigger-enforce (unlike `admin.audit_log`'s insert-only
+// trigger) because, per the sketch, ordinary application code is the sole
+// writer of this table and the invariant is a write-time discipline
+// (`ProcessExportJob`/`OrchestrateDsarRequest` only ever write a row from
+// `queued` through to a single terminal transition), not a defense against
+// an adversarial or buggy caller the way the audit log's insert-only rule
+// is.
+model ExportJob {
+  id                     String    @id
+  type                   String
+  status                 String    @default("queued")
+  reportDefinitionId     String?   @map("report_definition_id")
+  requestedByPersonId    String    @map("requested_by_person_id")
+  params                 Json      @default("{}")
+  identityDsarRequestId  String?   @map("identity_dsar_request_id")
+  outputFileKey          String?   @map("output_file_key")
+  outputFileFormat       String?   @map("output_file_format")
+  outputFileExpiresAt    DateTime? @map("output_file_expires_at") @db.Timestamptz(6)
+  rowCount               Int?      @map("row_count")
+  errorMessage           String?   @map("error_message")
+  startedAt              DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt            DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  reportDefinition ReportDefinition? @relation(fields: [reportDefinitionId], references: [id])
+
+  @@index([requestedByPersonId, createdAt(sort: Desc)], map: "export_job_requested_by_idx")
+  @@map("export_job")
+  @@schema("admin")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 9 — Admin & Reporting: retention_policies + admin's own processed_events
+// ---------------------------------------------------------------------------
+//
+// `admin.retention_policies` is ADR-0014 §3's table, restated (not
+// re-designed) here — the prior migration's own header comment explicitly
+// left it out ("left for whichever later stage actually builds the
+// retention_sweep job"); this is that stage. `updated_by` is a soft
+// reference to `identity.person.id` (ADR-0014's own literal DDL writes it
+// as `references identity.users(id)`, but this schema has no
+// `identity.users` table — `identity.persons` is this codebase's Person
+// table — and, more importantly, a cross-schema FK is exactly what every
+// other admin table's own comments already reject; a plain, unvalidated
+// TEXT column matches `report_definition.created_by_person_id` /
+// `export_job.requested_by_person_id`'s established "by ID only, no FK"
+// convention instead of the ADR's own illustrative FK).
+//
+// `admin.processed_events` is this schema's own idempotency ledger for
+// `consumeIdentityDsarEvents` (`OrchestrateDsarRequest`'s completion
+// consumer) — the exact same single-consumer-per-source-schema shape
+// `notifications.processed_events` (`NotificationsProcessedEvent`, above)
+// already established, not `packages/outbox`'s generic `(consumer,
+// event_id)` ledger: `admin` has exactly one logical external consumer
+// (identity's DSAR completion events), the same "one job per source
+// schema" shape notifications' own header comment documents.
+model RetentionPolicy {
+  id            String    @id
+  dataClass     String    @unique @map("data_class")
+  retentionDays Int       @map("retention_days")
+  action        String
+  enabled       Boolean   @default(true)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  updatedBy     String?   @map("updated_by")
+
+  @@map("retention_policies")
+  @@schema("admin")
+}
+
+model AdminProcessedEvent {
+  id            String   @id
+  sourceContext String   @map("source_context")
+  eventType     String   @map("event_type")
+  processedAt   DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@map("processed_events")
+  @@schema("admin")
+}

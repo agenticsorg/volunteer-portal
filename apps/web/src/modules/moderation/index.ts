@@ -88,6 +88,16 @@ export type {
   QueryModerationHistoryFilters,
 } from "./application/queryModerationHistory";
 
+/**
+ * The `moderation_logs` data class's own cleanup function (ADR-0014 §3;
+ * docs/ddd/admin-reporting.md's `retention_sweep`) — `admin`'s
+ * `retention_sweep` job calls this directly, never a generic cross-schema
+ * `UPDATE`, per that job's own "invokes each owning schema's own cleanup
+ * function directly" design.
+ */
+export { sweepModerationLogs } from "./application/sweepModerationLogs";
+export type { SweepModerationLogsResult } from "./application/sweepModerationLogs";
+
 // --- Reported-entity vocabulary (closed sets) ---
 export { REPORTED_ENTITY_TYPES, isReportedEntityType } from "./domain/reportedEntityTypes";
 export type { ReportedEntityType } from "./domain/reportedEntityTypes";
