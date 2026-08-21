@@ -88,6 +88,7 @@ async fn setup() -> (
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(SqlxProjectRepository),
         assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
+        project_names: Arc::new(api::project_name_adapter::ProjectsAssignmentsNameAdapter),
         discord_interactions_public_key: public_key_hex,
         discord_oauth: Arc::new(UnusedDiscordOAuthClient),
         google_oauth: Some(Arc::new(UnusedGoogleOAuthClient)),

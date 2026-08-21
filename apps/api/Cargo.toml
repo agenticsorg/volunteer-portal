@@ -38,8 +38,18 @@ serde_json.workspace = true
 rust_decimal.workspace = true
 ed25519-dalek = { version = "3.0.0", features = ["rand_core"] }
 hex = "0.4.3"
+typst = { workspace = true }
+typst-layout = { workspace = true }
+typst-as-lib = { workspace = true }
+typst-pdf = { workspace = true }
+typst-assets = { workspace = true }
 
 [dev-dependencies]
 chrono.workspace = true
 testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
 tower = { workspace = true, features = ["util"] }
+# Verifies the rendered verification letter's content (approved-only
+# rollup, brand copy) by extracting real text from the PDF bytes
+# (Prompt 6.1) -- not from the Typst source, from the actual compiled
+# output.
+pdf-extract = "0.12"

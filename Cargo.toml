@@ -41,3 +41,11 @@ thiserror = "2"
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ADR-0009 (Prompt 6.1): Typst-driven verification-letter PDF/UA-1
+# rendering, in-process, streamed -- never written to disk.
+typst = "0.15.1"
+typst-layout = "0.15.1"
+typst-as-lib = "0.16.0"
+typst-pdf = "0.15.1"
+typst-assets = { version = "0.15.1", features = ["fonts"] }

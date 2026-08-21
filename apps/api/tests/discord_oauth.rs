@@ -74,6 +74,7 @@ async fn build_test_app(
         db: kernel::ScopedDb::new(app_pool),
         lead_membership: Arc::new(SqlxProjectRepository),
         assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
+        project_names: Arc::new(api::project_name_adapter::ProjectsAssignmentsNameAdapter),
         discord_interactions_public_key: "test-public-key".to_string(),
         discord_oauth: Arc::new(FakeDiscordOAuthClient { user: discord_user }),
         google_oauth: None,

@@ -54,6 +54,7 @@ async fn main() -> anyhow::Result<()> {
         db: kernel::ScopedDb::new(pool),
         lead_membership: Arc::new(SqlxProjectRepository),
         assignment_snapshot: Arc::new(api::assignment_snapshot_adapter::ProjectsAssignmentsSnapshotAdapter),
+        project_names: Arc::new(api::project_name_adapter::ProjectsAssignmentsNameAdapter),
         discord_interactions_public_key: std::env::var("DISCORD_PUBLIC_KEY")
             .expect("DISCORD_PUBLIC_KEY must be set"),
         discord_oauth: Arc::new(discord_oauth),

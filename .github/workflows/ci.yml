@@ -64,6 +64,19 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --tests -- -D warnings
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # ADR-0009's non-negotiable Phase 6 gate: the generated verification
+      # letter must be validated against a real PDF/UA conformance
+      # checker, not just trusted on the strength of typst-pdf's UA-1
+      # export flag existing. veraPDF has no CLI artifact on Maven
+      # Central, so this builds it from a pinned source tag.
+      - name: Build veraPDF CLI (Prompt 6.1 PDF/UA conformance gate)
+        run: scripts/verapdf/build.sh
+
       # Integration tests spin up their own disposable Postgres via
       # testcontainers and run every RLS-protected query as the
       # non-owner `app_user` role created by migration 0004 — never the
@@ -72,6 +85,7 @@ jobs:
       - name: Test
         env:
           SQLX_OFFLINE: "false"
+          VERAPDF_CLI_JAR: ${{ github.workspace }}/scripts/verapdf/target/verapdf-cli.jar
         run: cargo test --workspace
 
   frontend:
