@@ -3,6 +3,7 @@ import { newId } from "@volunteer-portal/ulid";
 import { recordAuditEvent } from "@volunteer-portal/audit";
 import type { PolicySubject } from "@volunteer-portal/authz";
 import { CourseNotFoundError, CourseNotPublishableError, InvalidCourseTransitionError } from "../domain/errors";
+import { findCaptionGateBlocker } from "../domain/captionGate";
 import { assertTrainingAuthority } from "./assertTrainingAuthority";
 
 /**
@@ -50,14 +51,13 @@ export async function publishCourse(prisma: PrismaClient, input: PublishCourseIn
   if (course.modules.length === 0) {
     throw new CourseNotPublishableError(course.id, "the course has zero modules.");
   }
-  for (const courseModule of course.modules) {
-    if (!courseModule.video || courseModule.video.captionStatus !== "approved") {
-      throw new CourseNotPublishableError(
-        course.id,
-        `module "${courseModule.id}" has no video, or its captions are not approved — ` +
-          "every module's video must have captionStatus = 'approved' before a course can publish.",
-      );
-    }
+  const blocker = findCaptionGateBlocker(course.modules);
+  if (blocker) {
+    throw new CourseNotPublishableError(
+      course.id,
+      `module "${blocker.id}" has no video, or its captions are not approved — ` +
+        "every module's video must have captionStatus = 'approved' before a course can publish.",
+    );
   }
 
   let result!: PublishedCourse;

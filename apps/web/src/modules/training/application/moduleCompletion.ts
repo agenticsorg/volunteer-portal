@@ -3,6 +3,7 @@ import { newId } from "@volunteer-portal/ulid";
 import { getPersonSummary } from "@/modules/identity";
 import { buildCertificatePdf } from "../infra/certificatePdf";
 import { cloudflareR2Adapter, type CertificateStorageAdapter } from "../infra/cloudflareR2Client";
+import { isModuleReadyToComplete, isCourseReadyToComplete } from "../domain/moduleCompletionRule";
 
 /**
  * The module-completion invariant (docs/ddd/training-learning.md, Module
@@ -58,7 +59,7 @@ export async function evaluateModuleAndCourseCompletion(
         })) !== null
       : true;
 
-    if (progress.watchProgressPercent >= 90 && quizPassed) {
+    if (isModuleReadyToComplete(progress.watchProgressPercent, quizPassed)) {
       const completedAt = new Date();
       await tx.moduleProgress.update({
         where: { id: progress.id },
@@ -133,7 +134,7 @@ async function completeCourseIfEligible(
     },
   });
 
-  if (requiredModules.length === 0 || completedRequired < requiredModules.length) {
+  if (!isCourseReadyToComplete(requiredModules.length, completedRequired)) {
     return { moduleStatus: "completed", courseCompleted: false, issuedCertificateId: null };
   }
 

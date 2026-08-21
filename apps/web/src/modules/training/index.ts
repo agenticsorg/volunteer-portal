@@ -93,6 +93,13 @@ export type { CertificateTemplateInput } from "./infra/certificatePdf";
 export { wouldCreateCycle } from "./domain/prerequisiteGraph";
 export type { PrerequisiteEdges } from "./domain/prerequisiteGraph";
 
+/** Pure caption-approval publish-gate predicate (`publishCourse` uses this internally) — exported for direct unit testing. */
+export { isCoursePublishable, findCaptionGateBlocker } from "./domain/captionGate";
+export type { ModuleCaptionState } from "./domain/captionGate";
+
+/** Pure module/course-completion predicates (`moduleCompletion` uses these internally) — exported for direct unit testing. */
+export { isModuleReadyToComplete, isCourseReadyToComplete } from "./domain/moduleCompletionRule";
+
 export {
   ForbiddenActionError,
   CourseNotFoundError,
