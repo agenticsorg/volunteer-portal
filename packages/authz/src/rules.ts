@@ -100,6 +100,18 @@ function chapterLeadMayGrantOrRevoke(
   );
 }
 
+/**
+ * True iff the subject holds `org_admin` (global) or `content_admin`
+ * (global) — the exact authority ADR-0007's role table gives
+ * `content_admin` over "create/edit/publish/unpublish training videos and
+ * courses." Shared by every `training` content-authoring action
+ * (`course.manage`, `video.captions.approve`) and by `video.play`'s
+ * staff-preview branch.
+ */
+function hasContentAuthority(assignments: readonly RoleAssignmentFact[]): boolean {
+  return isOrgAdmin(assignments) || hasRoleInScope(assignments, "content_admin", "global", null);
+}
+
 interface PolicyRule {
   action: Action;
   allow: (
@@ -200,5 +212,28 @@ export const rules: readonly PolicyRule[] = [
     // hour entries but is not granted the bulk grant-report export).
     action: "hours.export",
     allow: (_subject, resource, assignments) => hasChapterManagementAuthority(resource, assignments),
+  },
+  {
+    // CreateCourse / AddModule / InitiateVideoUpload / PublishCourse: see
+    // this action's own doc comment in `types.ts`.
+    action: "course.manage",
+    allow: (_subject, _resource, assignments) => hasContentAuthority(assignments),
+  },
+  {
+    // ApproveCaptions (ADR-0010's mandatory publish gate) — same authority
+    // as `course.manage`, its own action for audit-trail granularity.
+    action: "video.captions.approve",
+    allow: (_subject, _resource, assignments) => hasContentAuthority(assignments),
+  },
+  {
+    // GetPlaybackUrl (ADR-0010): the learner playing their own enrolled
+    // video (`resource.ownerId === subject.id`, set by the use case only
+    // once it has independently verified an active/completed Enrollment
+    // exists — this rule does not and cannot check enrollment itself, it
+    // has no DB access), or `content_admin`/`org_admin` previewing any
+    // video regardless of enrollment.
+    action: "video.play",
+    allow: (subject, resource, assignments) =>
+      resource.ownerId === subject.id || hasContentAuthority(assignments),
   },
 ];

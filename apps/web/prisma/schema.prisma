@@ -516,22 +516,22 @@ enum VolunteeringHourEntryStatus {
 }
 
 model Opportunity {
-  id                    String                         @id
-  chapterId             String?                        @map("chapter_id")
+  id                    String                        @id
+  chapterId             String?                       @map("chapter_id")
   title                 String
   description           String
   category              String
-  skillsRequired        String[]                       @default([]) @map("skills_required")
-  locationType          VolunteeringLocationType        @map("location_type")
-  minAge                Int                            @default(16) @map("min_age")
-  prerequisiteCourseIds String[]                       @default([]) @map("prerequisite_course_ids")
-  createdByPersonId     String                         @map("created_by_person_id")
-  status                VolunteeringOpportunityStatus  @default(draft)
-  publishedAt           DateTime?                      @map("published_at") @db.Timestamptz(6)
-  closedAt              DateTime?                      @map("closed_at") @db.Timestamptz(6)
-  createdAt             DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime                       @default(now()) @map("updated_at") @db.Timestamptz(6)
-  searchVector           Unsupported("tsvector")?       @map("search_vector")
+  skillsRequired        String[]                      @default([]) @map("skills_required")
+  locationType          VolunteeringLocationType      @map("location_type")
+  minAge                Int                           @default(16) @map("min_age")
+  prerequisiteCourseIds String[]                      @default([]) @map("prerequisite_course_ids")
+  createdByPersonId     String                        @map("created_by_person_id")
+  status                VolunteeringOpportunityStatus @default(draft)
+  publishedAt           DateTime?                     @map("published_at") @db.Timestamptz(6)
+  closedAt              DateTime?                     @map("closed_at") @db.Timestamptz(6)
+  createdAt             DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                      @default(now()) @map("updated_at") @db.Timestamptz(6)
+  searchVector          Unsupported("tsvector")?      @map("search_vector")
 
   shifts      Shift[]
   hourEntries HourEntry[]
@@ -543,16 +543,16 @@ model Opportunity {
 }
 
 model Shift {
-  id            String                    @id
-  opportunityId String                    @map("opportunity_id")
-  startsAt      DateTime                  @map("starts_at") @db.Timestamptz(6)
-  endsAt        DateTime                  @map("ends_at") @db.Timestamptz(6)
+  id            String                  @id
+  opportunityId String                  @map("opportunity_id")
+  startsAt      DateTime                @map("starts_at") @db.Timestamptz(6)
+  endsAt        DateTime                @map("ends_at") @db.Timestamptz(6)
   timezone      String
   capacity      Int
-  acceptedCount Int                       @default(0) @map("accepted_count")
-  status        VolunteeringShiftStatus   @default(scheduled)
-  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime                  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  acceptedCount Int                     @default(0) @map("accepted_count")
+  status        VolunteeringShiftStatus @default(scheduled)
+  createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   opportunity  Opportunity   @relation(fields: [opportunityId], references: [id])
   applications Application[]
@@ -565,14 +565,14 @@ model Shift {
 }
 
 model Application {
-  id                 String                          @id
-  shiftId            String                          @map("shift_id")
-  applicantPersonId  String                          @map("applicant_person_id")
-  status             VolunteeringApplicationStatus   @default(pending)
-  appliedAt          DateTime                        @default(now()) @map("applied_at") @db.Timestamptz(6)
-  decidedByPersonId  String?                         @map("decided_by_person_id")
-  decidedAt          DateTime?                       @map("decided_at") @db.Timestamptz(6)
-  decisionNote       String?                         @map("decision_note")
+  id                String                        @id
+  shiftId           String                        @map("shift_id")
+  applicantPersonId String                        @map("applicant_person_id")
+  status            VolunteeringApplicationStatus @default(pending)
+  appliedAt         DateTime                      @default(now()) @map("applied_at") @db.Timestamptz(6)
+  decidedByPersonId String?                       @map("decided_by_person_id")
+  decidedAt         DateTime?                     @map("decided_at") @db.Timestamptz(6)
+  decisionNote      String?                       @map("decision_note")
 
   shift Shift @relation(fields: [shiftId], references: [id])
 
@@ -583,20 +583,20 @@ model Application {
 }
 
 model HourEntry {
-  id                 String                        @id
-  personId           String                        @map("person_id")
-  opportunityId      String                        @map("opportunity_id")
-  shiftId            String?                       @map("shift_id")
-  startAt            DateTime                      @map("start_at") @db.Timestamptz(6)
-  endAt              DateTime                      @map("end_at") @db.Timestamptz(6)
-  durationMinutes    Int                           @map("duration_minutes")
-  description        String?
-  status             VolunteeringHourEntryStatus   @default(submitted)
-  submittedAt        DateTime                      @default(now()) @map("submitted_at") @db.Timestamptz(6)
-  approverPersonId   String?                       @map("approver_person_id")
-  approvedAt         DateTime?                     @map("approved_at") @db.Timestamptz(6)
-  rejectedAt         DateTime?                     @map("rejected_at") @db.Timestamptz(6)
-  rejectionReason    String?                       @map("rejection_reason")
+  id               String                      @id
+  personId         String                      @map("person_id")
+  opportunityId    String                      @map("opportunity_id")
+  shiftId          String?                     @map("shift_id")
+  startAt          DateTime                    @map("start_at") @db.Timestamptz(6)
+  endAt            DateTime                    @map("end_at") @db.Timestamptz(6)
+  durationMinutes  Int                         @map("duration_minutes")
+  description      String?
+  status           VolunteeringHourEntryStatus @default(submitted)
+  submittedAt      DateTime                    @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  approverPersonId String?                     @map("approver_person_id")
+  approvedAt       DateTime?                   @map("approved_at") @db.Timestamptz(6)
+  rejectedAt       DateTime?                   @map("rejected_at") @db.Timestamptz(6)
+  rejectionReason  String?                     @map("rejection_reason")
 
   opportunity Opportunity @relation(fields: [opportunityId], references: [id])
   shift       Shift?      @relation(fields: [shiftId], references: [id])
@@ -605,6 +605,363 @@ model HourEntry {
   @@index([opportunityId], map: "idx_hour_entries_opportunity")
   @@map("hour_entries")
   @@schema("volunteering")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Training & Learning: data model only
+// ---------------------------------------------------------------------------
+//
+// The Course, Enrollment, and Certificate aggregates (with their child
+// entities/value objects Module, ModulePrerequisite, Video, Quiz,
+// QuizQuestion, QuizChoice, ModuleProgress, QuizAttempt,
+// QuizAttemptAnswer) from docs/ddd/training-learning.md, matching that
+// doc's own Schema Sketch field-for-field. All nine live in the `training`
+// schema and use real foreign keys between each other — the
+// no-cross-schema-FK rule (ADR-0001) applies only at bounded-context
+// boundaries, not within one. `training.domain_events`
+// (`TrainingDomainEvent`, above) already exists from Phase 1; this phase
+// only adds the nine aggregate/entity tables. No use cases, no API in this
+// migration — the migration this schema drives is data model only.
+//
+// `created_by_person_id` (Course) and `person_id` (Enrollment,
+// Certificate) are intentional soft references (plain columns, no
+// relation, no FK) to `identity.persons.id` — cross-schema, so no FK is
+// possible or wanted, per the Schema Sketch's own comments and ADR-0001.
+//
+// Several constructs in the Schema Sketch have no Prisma-schema-language
+// equivalent and are hand-authored in the migration SQL instead — same
+// precedent as every hand-authored addition already in this file's earlier
+// phases:
+//   - `chk_quiz_passing_score`, `chk_module_progress_watch_percent`,
+//     `chk_quiz_attempt_score_percent`, and
+//     `chk_module_prerequisite_no_self_reference` CHECK constraints — the
+//     four inline CHECKs the Schema Sketch itself writes (no stable
+//     `@@check` attribute in this Prisma version). Quiz invariant 4 ("a
+//     Question must have at least one Choice flagged `isCorrect = true`")
+//     and every other prose-only invariant in docs/ddd/training-learning.md
+//     that spans a row-set rather than a single row (e.g. Enrollment
+//     invariant 3, Module invariant 1/2, Certificate invariant 2) has no
+//     corresponding DDL in the Schema Sketch either — same precedent as
+//     Phase 3's Application/HourEntry status-transition invariants,
+//     enforced at the application layer once the use cases are built, not
+//     baked into this data-model-only migration.
+//   - `uq_enrollment_active_person_course`, the partial unique index
+//     enforcing Enrollment invariant 1 ("exactly one **active** Enrollment
+//     per (personId, courseId)") — Prisma's schema language has no
+//     partial-index syntax.
+//   - `course.search_vector`, `module.search_vector`, and
+//     `video.search_vector`, the ADR-0017 generated `tsvector` columns and
+//     their GIN indexes — per ADR-0017's own Implementation Notes,
+//     `GENERATED ALWAYS AS ... STORED` columns are not natively
+//     representable in Prisma's schema language, so these columns are
+//     added via hand-authored migration SQL and modeled here only as
+//     `Unsupported("tsvector")` so Prisma is aware of them for
+//     introspection without trying to manage their generation logic.
+//     Three separate columns (not one) because, unlike
+//     `volunteering.opportunities` (a single denormalized table),
+//     training's searchable text is split across three tables — Course
+//     owns `title`/`description`, Module owns `title`, Video owns
+//     `transcript_text` — and a Postgres generated column can only
+//     reference columns on its own row. This is a deliberate refinement
+//     of the Schema Sketch's own `idx_video_transcript_fts` (a plain,
+//     non-generated functional index on `video` alone): the Phase 4
+//     implementation prompt explicitly calls for "the tsvector generated
+//     column and GIN index across course/module titles and video
+//     transcript text" per ADR-0017, so all three tables get the same
+//     `GENERATED ALWAYS AS ... STORED` + GIN treatment already established
+//     by `volunteering.opportunities.search_vector`, and the app-layer
+//     training search procedure (a later phase) composes across all three
+//     — same "federated per-schema search" pattern ADR-0017 describes,
+//     refined here to federate per-table since that's where this schema's
+//     content actually lives. Named `idx_course_search`/`idx_module_search`/
+//     `idx_video_search` to match the `idx_opportunities_search` naming
+//     convention already established, rather than the sketch's
+//     `idx_video_transcript_fts` name.
+//
+//     Same `Unsupported()` round-trip gap as
+//     `volunteering.opportunities.search_vector` (see that model's comment
+//     above): any future `migrate dev`/`migrate diff` prompt proposing to
+//     drop these three generated columns or their GIN indexes must be
+//     declined, not applied.
+
+enum TrainingCourseStatus {
+  draft
+  published
+  archived
+
+  @@map("course_status")
+  @@schema("training")
+}
+
+enum TrainingEncodeStatus {
+  uploading
+  processing
+  ready
+  error
+
+  @@map("encode_status")
+  @@schema("training")
+}
+
+enum TrainingCaptionStatus {
+  pending
+  auto_generated
+  human_review
+  approved
+
+  @@map("caption_status")
+  @@schema("training")
+}
+
+enum TrainingEnrollmentStatus {
+  active
+  completed
+  withdrawn
+
+  @@map("enrollment_status")
+  @@schema("training")
+}
+
+enum TrainingProgressStatus {
+  not_started
+  in_progress
+  completed
+
+  @@map("progress_status")
+  @@schema("training")
+}
+
+model Course {
+  id                        String                   @id
+  slug                      String                   @unique
+  title                     String
+  description               String                   @default("")
+  status                    TrainingCourseStatus     @default(draft)
+  passingCertificateEnabled Boolean                  @default(true) @map("passing_certificate_enabled")
+  createdByPersonId         String                   @map("created_by_person_id")
+  publishedAt               DateTime?                @map("published_at") @db.Timestamptz(6)
+  createdAt                 DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(6)
+  searchVector              Unsupported("tsvector")? @map("search_vector")
+
+  modules      Module[]
+  enrollments  Enrollment[]
+  certificates Certificate[]
+
+  @@index([status], map: "idx_course_status")
+  @@map("course")
+  @@schema("training")
+}
+
+model Module {
+  id           String                   @id
+  courseId     String                   @map("course_id")
+  title        String
+  sequence     Int
+  isRequired   Boolean                  @default(true) @map("is_required")
+  createdAt    DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(6)
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  video  Video?
+  quiz   Quiz?
+
+  moduleProgress ModuleProgress[]
+
+  // Prerequisite DAG (Module.md's "Prerequisite" term / invariant 2):
+  // `dependsOn` = the prerequisite edges this module requires; `requiredBy`
+  // = the edges pointing at this module from dependents.
+  dependsOn  ModulePrerequisite[] @relation("ModulePrerequisiteModule")
+  requiredBy ModulePrerequisite[] @relation("ModulePrerequisitePrerequisiteModule")
+
+  @@unique([courseId, sequence])
+  @@index([courseId], map: "idx_module_course")
+  @@map("module")
+  @@schema("training")
+}
+
+// Value object (docs/ddd/training-learning.md "ModulePrerequisite"):
+// expresses a dependency DAG within a course; deliberately not merely
+// `Module.sequence` order (see that field's own doc comment). Composite
+// primary key, no surrogate `id`, matching the Schema Sketch exactly.
+model ModulePrerequisite {
+  moduleId             String @map("module_id")
+  prerequisiteModuleId String @map("prerequisite_module_id")
+
+  module             Module @relation("ModulePrerequisiteModule", fields: [moduleId], references: [id], onDelete: Cascade)
+  prerequisiteModule Module @relation("ModulePrerequisitePrerequisiteModule", fields: [prerequisiteModuleId], references: [id], onDelete: Cascade)
+
+  @@id([moduleId, prerequisiteModuleId])
+  @@map("module_prerequisite")
+  @@schema("training")
+}
+
+// Entity, owned by exactly one Module, modeled as its own entity because it
+// has an independent lifecycle driven by an external system — Cloudflare
+// Stream (ADR-0010).
+model Video {
+  id                 String                   @id
+  moduleId           String                   @unique @map("module_id")
+  cloudflareStreamId String                   @unique @map("cloudflare_stream_id")
+  durationSeconds    Int?                     @map("duration_seconds")
+  encodeStatus       TrainingEncodeStatus     @default(uploading) @map("encode_status")
+  captionStatus      TrainingCaptionStatus    @default(pending) @map("caption_status")
+  transcriptText     String?                  @map("transcript_text")
+  thumbnailUrl       String?                  @map("thumbnail_url")
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(6)
+  searchVector       Unsupported("tsvector")? @map("search_vector")
+
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("video")
+  @@schema("training")
+}
+
+model Quiz {
+  id                  String   @id
+  moduleId            String   @unique @map("module_id")
+  passingScorePercent Int      @map("passing_score_percent") @db.SmallInt
+  maxAttempts         Int?     @map("max_attempts") @db.SmallInt
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  module    Module         @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@map("quiz")
+  @@schema("training")
+}
+
+// Value object, persisted as its own row (docs/ddd/training-learning.md's
+// own reasoning: attempts must reference exact question identity for
+// scoring/audit) but conceptually part of Quiz and never addressed outside
+// it.
+model QuizQuestion {
+  id       String @id
+  quizId   String @map("quiz_id")
+  prompt   String
+  sequence Int
+
+  quiz    Quiz                @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  choices QuizChoice[]
+  answers QuizAttemptAnswer[]
+
+  @@unique([quizId, sequence])
+  @@map("quiz_question")
+  @@schema("training")
+}
+
+// Value object, same reasoning as QuizQuestion.
+model QuizChoice {
+  id         String  @id
+  questionId String  @map("question_id")
+  label      String
+  isCorrect  Boolean @default(false) @map("is_correct")
+  sequence   Int
+
+  question QuizQuestion        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  QuizAttemptAnswer[]
+
+  @@unique([questionId, sequence])
+  @@map("quiz_choice")
+  @@schema("training")
+}
+
+model Enrollment {
+  id          String                   @id
+  personId    String                   @map("person_id")
+  courseId    String                   @map("course_id")
+  status      TrainingEnrollmentStatus @default(active)
+  enrolledAt  DateTime                 @default(now()) @map("enrolled_at") @db.Timestamptz(6)
+  completedAt DateTime?                @map("completed_at") @db.Timestamptz(6)
+  createdAt   DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  moduleProgress ModuleProgress[]
+  quizAttempts   QuizAttempt[]
+  certificates   Certificate[]
+
+  @@index([personId], map: "idx_enrollment_person")
+  @@map("enrollment")
+  @@schema("training")
+}
+
+model ModuleProgress {
+  id                    String                 @id
+  enrollmentId          String                 @map("enrollment_id")
+  moduleId              String                 @map("module_id")
+  status                TrainingProgressStatus @default(not_started)
+  resumePositionSeconds Int                    @default(0) @map("resume_position_seconds")
+  watchProgressPercent  Int                    @default(0) @map("watch_progress_percent") @db.SmallInt
+  completedAt           DateTime?              @map("completed_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  module     Module     @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+
+  @@unique([enrollmentId, moduleId])
+  @@index([enrollmentId], map: "idx_module_progress_enrollment")
+  @@map("module_progress")
+  @@schema("training")
+}
+
+model QuizAttempt {
+  id           String   @id
+  enrollmentId String   @map("enrollment_id")
+  quizId       String   @map("quiz_id")
+  scorePercent Int      @map("score_percent") @db.SmallInt
+  passed       Boolean
+  submittedAt  DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
+
+  enrollment Enrollment          @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  quiz       Quiz                @relation(fields: [quizId], references: [id], onDelete: Restrict)
+  answers    QuizAttemptAnswer[]
+
+  @@index([enrollmentId, quizId], map: "idx_quiz_attempt_enrollment_quiz")
+  @@map("quiz_attempt")
+  @@schema("training")
+}
+
+// Value object row recording the Choice selected per Question for one
+// QuizAttempt (audit/analytics). Composite primary key, no surrogate `id`,
+// matching the Schema Sketch exactly.
+model QuizAttemptAnswer {
+  attemptId  String  @map("attempt_id")
+  questionId String  @map("question_id")
+  choiceId   String  @map("choice_id")
+  isCorrect  Boolean @map("is_correct")
+
+  attempt  QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  choice   QuizChoice   @relation(fields: [choiceId], references: [id], onDelete: Restrict)
+
+  @@id([attemptId, questionId])
+  @@map("quiz_attempt_answer")
+  @@schema("training")
+}
+
+model Certificate {
+  id                String    @id
+  personId          String    @map("person_id")
+  courseId          String    @map("course_id")
+  enrollmentId      String    @map("enrollment_id")
+  certificateNumber String    @unique @map("certificate_number")
+  pdfFileKey        String?   @map("pdf_file_key")
+  templateVersion   String    @map("template_version")
+  issuedAt          DateTime  @default(now()) @map("issued_at") @db.Timestamptz(6)
+  expiresAt         DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  course     Course     @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+
+  @@unique([personId, courseId, enrollmentId])
+  @@index([personId], map: "idx_certificate_person")
+  @@map("certificate")
+  @@schema("training")
 }
 
 model AuditLog {

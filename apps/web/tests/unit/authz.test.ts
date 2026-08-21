@@ -372,6 +372,67 @@ describe("authz: can()", () => {
       expect(can({ id: "mentor_1", status: "active" }, "hours.export", resource, mentorOfLondon)).toBe(false);
     });
   });
+
+  describe("training: course.manage / video.captions.approve", () => {
+    const contentAdmin: RoleAssignmentFact[] = [
+      { role: "content_admin", scopeType: "global", scopeId: null, revokedAt: null },
+    ];
+    const orgAdmin: RoleAssignmentFact[] = [
+      { role: "org_admin", scopeType: "global", scopeId: null, revokedAt: null },
+    ];
+    const chapterLead: RoleAssignmentFact[] = [
+      { role: "chapter_lead", scopeType: "chapter", scopeId: "chapter_london", revokedAt: null },
+    ];
+
+    it.each(["course.manage", "video.captions.approve"] as const)(
+      "%s: content_admin or org_admin qualify, a chapter_lead does not",
+      (action) => {
+        const resource = { type: "course", scopeType: "global", scopeId: null } as const;
+        expect(can({ id: "admin_1", status: "active" }, action, resource, contentAdmin)).toBe(true);
+        expect(can({ id: "admin_2", status: "active" }, action, resource, orgAdmin)).toBe(true);
+        expect(can({ id: "lead_1", status: "active" }, action, resource, chapterLead)).toBe(false);
+      },
+    );
+  });
+
+  describe("training: video.play", () => {
+    const contentAdmin: RoleAssignmentFact[] = [
+      { role: "content_admin", scopeType: "global", scopeId: null, revokedAt: null },
+    ];
+
+    it("allows a caller acting on their own enrollment (resource.ownerId === subject.id)", () => {
+      expect(
+        can(
+          { id: "learner_1", status: "active" },
+          "video.play",
+          { type: "video", scopeType: "global", scopeId: null, ownerId: "learner_1" },
+          [],
+        ),
+      ).toBe(true);
+    });
+
+    it("denies a caller acting on someone else's enrollment without content authority", () => {
+      expect(
+        can(
+          { id: "learner_1", status: "active" },
+          "video.play",
+          { type: "video", scopeType: "global", scopeId: null, ownerId: "learner_2" },
+          [],
+        ),
+      ).toBe(false);
+    });
+
+    it("allows content_admin to preview any video regardless of ownerId", () => {
+      expect(
+        can(
+          { id: "admin_1", status: "active" },
+          "video.play",
+          { type: "video", scopeType: "global", scopeId: null, ownerId: "learner_2" },
+          contentAdmin,
+        ),
+      ).toBe(true);
+    });
+  });
 });
 
 describe("hasRoleInScope", () => {
