@@ -6,9 +6,9 @@ export {
   getNotificationTypeDefault,
   NOTIFICATION_TYPE_DELIVERY_MODE,
   getNotificationTypeDeliveryMode,
-} from "./notificationDefaults.js";
+} from "./notificationDefaults";
 export type {
   NotificationType,
   NotificationChannel,
   NotificationDeliveryMode,
-} from "./notificationDefaults.js";
+} from "./notificationDefaults";
