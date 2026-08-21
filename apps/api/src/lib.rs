@@ -12,6 +12,7 @@ pub mod admin_reporting;
 pub mod assignment_recipient_adapter;
 pub mod assignment_snapshot_adapter;
 pub mod auth;
+pub mod data_subject_requests;
 pub mod discord_dm_adapter;
 pub mod discord_interactions;
 pub mod dto;
@@ -103,6 +104,26 @@ pub fn build_router(state: AppState) -> Router {
             get(admin_reporting::export_volunteer_roster_csv),
         )
         .route("/admin/reports/hours", get(admin_reporting::hours_report))
+        .route(
+            "/volunteers/me/data-subject-requests",
+            get(data_subject_requests::list_own_requests).post(data_subject_requests::file_request),
+        )
+        .route(
+            "/admin/data-subject-requests",
+            get(data_subject_requests::list_pending_requests),
+        )
+        .route(
+            "/admin/data-subject-requests/{id}/start",
+            post(data_subject_requests::start_request),
+        )
+        .route(
+            "/admin/data-subject-requests/{id}/complete",
+            post(data_subject_requests::complete_request),
+        )
+        .route(
+            "/admin/data-subject-requests/{id}/reject",
+            post(data_subject_requests::reject_request),
+        )
         .route("/projects/suggest", get(semantic_matching::suggest_projects))
         .route(
             "/volunteers/me/hours-suggestions",

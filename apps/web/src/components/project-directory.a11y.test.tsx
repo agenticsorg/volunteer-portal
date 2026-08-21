@@ -6,7 +6,7 @@ import { ProjectDirectory } from "./project-directory";
 
 /**
  * Prompt 3.3's WCAG 2.1 AA exit criterion, automated half -- see
- * MANUAL_ACCESSIBILITY_TESTING.md for the manual half this doesn't
+ * ACCESSIBILITY_AUDIT.md for the manual half this doesn't
  * cover. `ProjectDirectory` doesn't fetch on mount (search results only
  * appear after a skill is submitted), so this suite renders it with no
  * network mocking required.

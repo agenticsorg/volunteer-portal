@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into data_subject_request (\n                   id, volunteer_id, request_type, status, requested_at,\n                   completed_at, handled_by, rejection_reason\n               )\n               values ($1, $2, $3, $4, $5, $6, $7, $8)\n               on conflict (id) do update set\n                   status = excluded.status,\n                   completed_at = excluded.completed_at,\n                   handled_by = excluded.handled_by,\n                   rejection_reason = excluded.rejection_reason",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "35de3dcdd11d12a9051bfcdf5c3b5e685cfdcf866cc4a9eb4c6b772024202ac0"
+}

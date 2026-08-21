@@ -1,5 +1,8 @@
 use chrono::{DateTime, Utc};
-use kernel::{ActorId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent, OutboxEvent, VolunteerId};
+use kernel::{
+    ActorId, AuditAction, AuditEntityType, AuditableEvent, DataSubjectRequestId, DomainEvent, OutboxEvent,
+    VolunteerId,
+};
 use uuid::Uuid;
 
 use crate::oauth::OAuthProvider;
@@ -188,5 +191,58 @@ impl AuditableEvent for RoleChanged {
     }
     fn after(&self) -> Option<serde_json::Value> {
         Some(serde_json::json!({ "role": self.new_role.as_str() }))
+    }
+}
+
+/// compliance-audit.md: emitted by `Volunteer::anonymize`, distinct from
+/// every other `Volunteer` mutation event above, so an auditor scanning
+/// `audit_log` for "was this volunteer's data ever erased" can filter on
+/// this specific action/entity pair without wading through ordinary
+/// profile-update noise. Carries `request_id` so the row can be
+/// cross-referenced against the `DataSubjectRequest` that triggered it,
+/// but deliberately carries no other content -- the `before`/`after`
+/// snapshots below are intentionally not the tombstoned field values,
+/// since writing the anonymized name/email into `audit_log.after` would
+/// itself retain the *fact but not the shape* of what was erased, and
+/// writing the pre-anonymization values into `before` would defeat the
+/// erasure by keeping them recoverable from the audit trail.
+#[derive(Debug, Clone)]
+pub struct VolunteerAnonymized {
+    pub volunteer_id: VolunteerId,
+    pub request_id: DataSubjectRequestId,
+    pub anonymized_by: VolunteerId,
+    pub occurred_at: DateTime<Utc>,
+}
+
+impl DomainEvent for VolunteerAnonymized {
+    fn event_type(&self) -> &'static str {
+        "volunteer_anonymized"
+    }
+    fn occurred_at(&self) -> DateTime<Utc> {
+        self.occurred_at
+    }
+    fn as_auditable(&self) -> Option<&dyn AuditableEvent> {
+        Some(self)
+    }
+}
+
+impl AuditableEvent for VolunteerAnonymized {
+    fn actor(&self) -> ActorId {
+        ActorId::Volunteer(self.anonymized_by)
+    }
+    fn action(&self) -> AuditAction {
+        AuditAction::Updated
+    }
+    fn entity_type(&self) -> AuditEntityType {
+        AuditEntityType::Volunteer
+    }
+    fn entity_id(&self) -> Uuid {
+        self.volunteer_id.as_uuid()
+    }
+    fn before(&self) -> Option<serde_json::Value> {
+        None
+    }
+    fn after(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({ "anonymized": true, "request_id": self.request_id }))
     }
 }

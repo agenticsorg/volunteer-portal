@@ -10,7 +10,7 @@ import { OnboardingForm } from "./onboarding-form";
  * note, this covers roughly 30% of WCAG success criteria (structural
  * issues -- label association, missing ARIA, contrast) and is not a
  * substitute for the manual half (keyboard-only navigation, a screen
- * reader pass) -- see MANUAL_ACCESSIBILITY_TESTING.md for that gap,
+ * reader pass) -- see ACCESSIBILITY_AUDIT.md for that gap,
  * which requires an actual human and cannot be performed by this agent.
  */
 describe("OnboardingForm accessibility", () => {

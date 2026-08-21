@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select id, name, email, role, status, skills, timezone,\n                      created_at as \"created_at: DateTime<Utc>\"\n               from volunteer\n               where ($1::text is null or status = $1)\n                 and ($2::text is null or role = $2)\n                 and ($3::text is null or $3 = any(skills))\n               order by created_at asc\n               limit $4 offset $5",
+  "query": "select id, name, email, role, status, skills, timezone, country_region,\n                      created_at as \"created_at: DateTime<Utc>\"\n               from volunteer\n               where ($1::text is null or status = $1)\n                 and ($2::text is null or role = $2)\n                 and ($3::text is null or $3 = any(skills))\n               order by created_at asc\n               limit $4 offset $5",
   "describe": {
     "columns": [
       {
@@ -40,6 +40,11 @@
       },
       {
         "ordinal": 7,
+        "name": "country_region",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
         "name": "created_at: DateTime<Utc>",
         "type_info": "Timestamptz"
       }
@@ -61,8 +66,9 @@
       false,
       false,
       false,
+      true,
       false
     ]
   },
-  "hash": "56d60d96976ac182f56f9ee39ede7718e71d378e1d35e9738b1dfc3f84c2b46c"
+  "hash": "314a44946337c40305319bca3d9d47473132de5f8d6044b2c62db0658487771b"
 }

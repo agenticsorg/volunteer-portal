@@ -21,6 +21,19 @@ pub trait HourEntryRepository: Send + Sync {
         lead_id: VolunteerId,
     ) -> Result<Vec<HourEntry>, RepoError>;
 
+    /// Prompt 10.2's data-subject Export path: every entry regardless of
+    /// `status`, unlike every other volunteer-scoped read on this trait
+    /// (which are deliberately `approved`-only, matching what a
+    /// verification letter or hours report should show). A PIPEDA/GDPR
+    /// export is "everything we hold about you," including a pending or
+    /// rejected entry that never became part of the volunteer's official
+    /// record.
+    async fn find_by_volunteer(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        volunteer_id: VolunteerId,
+    ) -> Result<Vec<HourEntry>, RepoError>;
+
     /// Feeds `VerificationLetterService` (Prompt 6.1) and the admin
     /// hours report.
     async fn find_approved_by_volunteer_and_range(
@@ -148,6 +161,47 @@ impl HourEntryRepository for SqlxHourEntryRepository {
                join project_lead pl on pl.project_id = a.project_id
                where he.status = 'pending' and pl.volunteer_id = $1"#,
             lead_id.as_uuid(),
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                row_to_hour_entry(
+                    r.id,
+                    r.volunteer_id,
+                    r.assignment_id,
+                    r.date,
+                    r.hours,
+                    r.description,
+                    r.status,
+                    r.approver_id,
+                    r.decided_at,
+                    r.adjustment_adjusted_by,
+                    r.adjustment_previous_hours,
+                    r.adjustment_reason,
+                    r.adjustment_adjusted_at,
+                )
+            })
+            .collect())
+    }
+
+    async fn find_by_volunteer(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        volunteer_id: VolunteerId,
+    ) -> Result<Vec<HourEntry>, RepoError> {
+        let rows = sqlx::query!(
+            r#"select id, volunteer_id, assignment_id, date, hours, description, status,
+                      approver_id,
+                      decided_at as "decided_at: chrono::DateTime<chrono::Utc>",
+                      adjustment_adjusted_by, adjustment_previous_hours, adjustment_reason,
+                      adjustment_adjusted_at as "adjustment_adjusted_at: chrono::DateTime<chrono::Utc>"
+               from hour_entry
+               where volunteer_id = $1
+               order by date asc"#,
+            volunteer_id.as_uuid(),
         )
         .fetch_all(&mut **tx)
         .await?;

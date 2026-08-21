@@ -7,7 +7,7 @@ import { HoursApprovalQueue } from "./hours-approval-queue";
 
 /**
  * Prompt 4.2's WCAG 2.1 AA exit criterion, automated half -- see
- * MANUAL_ACCESSIBILITY_TESTING.md for the manual half this doesn't
+ * ACCESSIBILITY_AUDIT.md for the manual half this doesn't
  * cover. `HoursApprovalQueue` fetches on mount, so `fetch` is stubbed
  * here rather than hitting a real API, matching `ProjectRoster`'s test
  * pattern.

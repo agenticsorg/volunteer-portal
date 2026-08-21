@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { CurrentUser } from "@/generated/CurrentUser";
 import { AccessibleCheckbox } from "@/components/accessible-checkbox";
 
@@ -20,6 +22,9 @@ export default function Home() {
         generated types from the Rust API.
       </p>
       <AccessibleCheckbox />
+      <Link href="/privacy" className="text-sm underline">
+        Privacy Policy
+      </Link>
     </div>
   );
 }
