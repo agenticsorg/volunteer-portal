@@ -64,7 +64,7 @@ describe("identity use cases -> admin.audit_log (real worker process, end-to-end
     worker.stderr.on("data", (chunk) => (workerOutput += chunk.toString()));
 
     await pollUntil(async () => {
-      if (workerOutput.includes("graphile-worker running")) return true;
+      if (workerOutput.includes("worker.started")) return true;
       if (worker.exitCode !== null) {
         throw new Error(`worker process exited early (code ${worker.exitCode}):\n${workerOutput}`);
       }

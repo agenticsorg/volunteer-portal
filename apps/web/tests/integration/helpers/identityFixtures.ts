@@ -72,6 +72,7 @@ export function contextFor(
     headers: new Headers(),
     prisma,
     supabaseSession: { supabaseAuthId: newId(), email: `${person.id.toLowerCase()}@example.com` },
+    requestId: newId(),
     person: {
       personId: person.id,
       publicSlug: person.publicSlug,

@@ -15,8 +15,16 @@
  */
 import { run } from "graphile-worker";
 import { auditLogWriter } from "./tasks/audit-log-writer.js";
+import { initSentry } from "./observability/sentry.js";
+import { withJobErrorCapture } from "./observability/withJobErrorCapture.js";
+import { logger } from "./observability/logger.js";
 
 async function main() {
+  // ADR-0013 §"Release tracking"/"Sentry" — see observability/sentry.ts's
+  // doc comment for why this is a safe no-op in this environment (no
+  // SENTRY_DSN configured).
+  initSentry();
+
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error(
@@ -34,7 +42,10 @@ async function main() {
     // the event-delivery backbone."
     concurrency: 5,
     taskList: {
-      audit_log_writer: auditLogWriter,
+      // Every task is wrapped with withJobErrorCapture (ADR-0013 §"Sentry":
+      // "every job's uncaught exception routes through this same capture
+      // call") — see that module's doc comment.
+      audit_log_writer: withJobErrorCapture("audit_log_writer", auditLogWriter),
     },
   });
 
@@ -49,12 +60,14 @@ async function main() {
     { jobKey: "audit_log_writer_poll", jobKeyMode: "replace" },
   );
 
-  console.log("apps/worker: graphile-worker running (tasks: audit_log_writer)");
+  logger.info("worker.started", { context: { tasks: ["audit_log_writer"] } });
 
   await runner.promise;
 }
 
 main().catch((err) => {
-  console.error(err);
+  logger.error("worker.startup_failed", {
+    context: { message: err instanceof Error ? err.message : String(err) },
+  });
   process.exit(1);
 });

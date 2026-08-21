@@ -74,7 +74,7 @@ describe("audit_log_writer (real worker process, end-to-end)", () => {
     });
 
     await pollUntil(async () => {
-      if (workerOutput.includes("graphile-worker running")) return true;
+      if (workerOutput.includes("worker.started")) return true;
       if (worker.exitCode !== null) {
         throw new Error(`worker process exited early (code ${worker.exitCode}):\n${workerOutput}`);
       }

@@ -73,7 +73,12 @@ describe("Training lifecycle (integration)", () => {
   async function addPublishedVideoModule(
     admin: { id: string; status: string },
     courseId: string,
-    args: { title: string; sequence: number; quiz?: Parameters<typeof addModule>[1]["quiz"] },
+    args: {
+      title: string;
+      sequence: number;
+      quiz?: Parameters<typeof addModule>[1]["quiz"];
+      transcriptText?: string;
+    },
   ) {
     const stream = fakeStreamAdapter();
     const { moduleId, quizId } = await addModule(prisma, {
@@ -104,7 +109,7 @@ describe("Training lifecycle (integration)", () => {
     await approveCaptions(prisma, {
       caller: callerSubject(admin),
       videoId,
-      transcriptText: `Transcript for ${args.title}.`,
+      transcriptText: args.transcriptText ?? `Transcript for ${args.title}.`,
     });
 
     video = await prisma.video.findUniqueOrThrow({ where: { id: videoId } });
@@ -224,7 +229,16 @@ describe("Training lifecycle (integration)", () => {
       });
       courseIds.push(courseId);
 
-      const moduleA = await addPublishedVideoModule(admin, courseId, { title: "Intro", sequence: 1 });
+      // transcriptText deliberately contains a word ("Glockenspiel")
+      // absent from every course/module title in this test, so a search
+      // hit on it can only come from `training.video.search_vector`
+      // (generated solely from `transcript_text`, per the
+      // `add_training_aggregates` migration) — not from title matching.
+      const moduleA = await addPublishedVideoModule(admin, courseId, {
+        title: "Intro",
+        sequence: 1,
+        transcriptText: "In this module we cover the safety glockenspiel demonstration.",
+      });
       const moduleB = await addPublishedVideoModule(admin, courseId, {
         title: "Safety Quiz Module",
         sequence: 2,
@@ -346,8 +360,15 @@ describe("Training lifecycle (integration)", () => {
       const courseHits = await searchTraining(prisma, { query: "Safety" });
       expect(courseHits.some((r) => r.kind === "course" && r.courseId === courseId)).toBe(true);
       expect(courseHits.some((r) => r.kind === "module" && r.courseId === courseId)).toBe(true);
-      const transcriptHits = await searchTraining(prisma, { query: "Intro" });
-      expect(transcriptHits.some((r) => r.courseId === courseId)).toBe(true);
+      // A transcript-only term proves `training.video`'s tsvector column
+      // (built solely from transcript_text, never title) is genuinely
+      // searchable — not merely a coincidental match against a
+      // course/module title (Phase 4 completion bar: "training content is
+      // searchable via the tsvector column").
+      const transcriptHits = await searchTraining(prisma, { query: "glockenspiel" });
+      expect(
+        transcriptHits.some((r) => r.kind === "video" && r.courseId === courseId),
+      ).toBe(true);
     },
   );
 });

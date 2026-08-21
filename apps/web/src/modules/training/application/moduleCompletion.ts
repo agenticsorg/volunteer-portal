@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { newId } from "@volunteer-portal/ulid";
 import { getPersonSummary } from "@/modules/identity";
+import { logger } from "@/server/observability/logger";
 import { buildCertificatePdf } from "../infra/certificatePdf";
 import { cloudflareR2Adapter, type CertificateStorageAdapter } from "../infra/cloudflareR2Client";
 import { isModuleReadyToComplete, isCourseReadyToComplete } from "../domain/moduleCompletionRule";
@@ -242,6 +243,9 @@ export async function renderAndStoreCertificatePdf(
     await prisma.certificate.update({ where: { id: certificate.id }, data: { pdfFileKey: r2Key } });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(`[training] certificate ${certificateId} PDF not rendered (will retry later): ${message}`);
+    logger.warn("training.certificate_pdf_render_failed", {
+      subjectId: certificateId,
+      context: { certificateId, message, willRetry: true },
+    });
   }
 }

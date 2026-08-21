@@ -130,6 +130,16 @@ describe("requestDataExport / requestErasure (integration)", () => {
       );
       await prisma.person.update({ where: { id: person }, data: { avatarUrl: "https://example.com/a.png" } });
       await grantRoleDirect(prisma, { subjectId: person, role: "volunteer", grantedBy: person });
+      await prisma.consentRecord.create({
+        data: {
+          id: newId(),
+          personId: person,
+          purpose: "terms_of_service",
+          granted: true,
+          policyVersion: "2026-01-01",
+          source: "signup_form",
+        },
+      });
 
       const { dsarId, anonymizedAt } = await requestErasure(prisma, {
         personId: person,
@@ -158,6 +168,14 @@ describe("requestDataExport / requestErasure (integration)", () => {
       expect(roles[0].revokedAt).not.toBeNull();
       expect(roles[0].revokedBy).toBe(person);
       expect(roles[0].revokedAt?.toISOString()).toBe(anonymizedAt);
+
+      // The person's ConsentRecord history is untouched — the comment
+      // above names it explicitly as one of the aggregate rows this use
+      // case must never cascade-delete, so assert it directly rather than
+      // leaving that claim unverified.
+      const consents = await prisma.consentRecord.findMany({ where: { personId: person } });
+      expect(consents).toHaveLength(1);
+      expect(consents[0]).toMatchObject({ purpose: "terms_of_service", granted: true });
 
       const events = await prisma.identityDomainEvent.findMany({
         where: { aggregateType: "Person", aggregateId: person, eventType: "PersonAnonymized" },
