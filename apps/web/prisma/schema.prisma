@@ -1734,7 +1734,7 @@ model ModerationAction {
 
 // ---------------------------------------------------------------------------
 // Phase 8 — Notifications: schema only (Notification, NotificationPreference,
-// DeliveryAttempt, plus the inbound-event idempotency ledger for the six
+// DeliveryAttempt, plus the inbound-event idempotency ledger for the five
 // event-consumer jobs a later stage builds)
 // ---------------------------------------------------------------------------
 //
@@ -1801,18 +1801,18 @@ model ModerationAction {
 // own `domain_events` row (no ledger table in this schema at all). This
 // migration adds one anyway, per this stage's own explicit brief, mirroring
 // the `gamification.processed_events` / `community.processed_events`
-// precedent (ADR-0009's idempotent-consumer pattern) for the six
+// precedent (ADR-0009's idempotent-consumer pattern) for the five
 // per-source-schema consumer jobs a later stage builds
 // (`consumeVolunteeringEvents`, `consumeTrainingEvents`,
 // `consumeGamificationEvents`, `consumeCommunityEvents`,
-// `consumeModerationEvents`, `consumeAdminEvents` — one per source schema
+// `consumeModerationEvents` — one per source schema
 // listed in the "Consumed" event table, not one per event type). Keyed by a
 // single `id` column (the origin `domain_events.id`, a ULID, already
 // globally unique on its own — same as `community.processed_events`), with
 // `sourceContext` and `eventType` carried alongside for traceability, same
 // shape and reasoning as `CommunityProcessedEvent` above. This is
 // deliberately NOT `packages/outbox`'s generic `(consumer, event_id)`
-// template: each of the six jobs is this context's single logical consumer
+// template: each of the five jobs is this context's single logical consumer
 // for its one source schema, not several independent consumers draining the
 // same table. `Notification`'s own `(source_event_id, recipient_person_id)`
 // unique index (invariant 2) is a second, independent line of defense
@@ -1900,7 +1900,7 @@ model DeliveryAttempt {
 // stage's own explicit brief rather than docs/ddd/notifications.md's own
 // Schema Sketch — see the header comment above for the full reasoning and
 // how this differs from `packages/outbox`'s generic `(consumer, event_id)`
-// template. A later stage's six per-source-schema consumer jobs each
+// template. A later stage's five per-source-schema consumer jobs each
 // attempt an insert here inside the same transaction as any resulting
 // `Notification`/`DeliveryAttempt` writes (including the no-row-created
 // "suppressed" outcome); a primary-key conflict means the event was already

@@ -12,6 +12,7 @@ import {
   handleModerationActionTaken,
   setNotificationPreference,
   processDeliveryJob,
+  ForbiddenActionError,
   type ResendAdapter,
   type HoursApprovedPayload,
 } from "@/modules/notifications";
@@ -114,6 +115,29 @@ describe("Notifications (integration)", () => {
     };
     return handleHoursApproved(prisma, payload, sourceEventId);
   }
+
+  describe("setNotificationPreference authorization (notification.preference.manage)", () => {
+    it("rejects setting another person's preference (ForbiddenActionError), same precedent as every other module's ownership-scoped action", async () => {
+      const owner = await person();
+      const caller = await person();
+
+      await expect(
+        setNotificationPreference(prisma, {
+          caller: { id: caller.id, status: "active" },
+          personId: owner.id,
+          type: "hours_approved",
+          channel: "email",
+          enabled: false,
+        }),
+      ).rejects.toThrow(ForbiddenActionError);
+
+      // No row was created or changed for the target person.
+      const row = await prisma.notificationPreference.findUnique({
+        where: { personId_type_channel: { personId: owner.id, type: "hours_approved", channel: "email" } },
+      });
+      expect(row).toBeNull();
+    });
+  });
 
   describe("double-gated consent (Notification invariant 1) — both timings tested explicitly, not conflated", () => {
     it("opting out of a type on BOTH channels BEFORE the triggering event fires means the Notification is never queued", async () => {
