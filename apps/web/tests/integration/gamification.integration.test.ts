@@ -6,6 +6,7 @@ import {
   getLeaderboard,
   getPersonGamificationProfile,
   rebuildLeaderboardSnapshot,
+  recordPointsForEvent,
   type InboundEvent,
 } from "@/modules/gamification";
 import { createPerson } from "./helpers/identityFixtures";
@@ -112,6 +113,48 @@ describe("Gamification (integration)", () => {
         where: { eventType: "PointsAwarded", aggregateId: entries[0].id },
       });
       expect(published).toHaveLength(1); // published exactly once too, not once per attempted replay
+    });
+
+    it("recordPointsForEvent's own (sourceEventType, sourceEventId) backstop recovers within the transaction instead of aborting it", async () => {
+      // Exercises RecordPointsForEvent's *own* independent idempotency
+      // backstop directly (docs/ddd/gamification.md's Integration Notes,
+      // point 3) — not the `processed_events` check `consumeInboundEvent`
+      // already performs first, which would short-circuit before this
+      // function's own unique-constraint guard ever gets a chance to run.
+      // Regression test: this call used to throw Postgres error 25P02
+      // ("current transaction is aborted") on the second write below,
+      // because the caught P2002 from the duplicate `create()` left the
+      // surrounding transaction unusable for anything that ran afterward.
+      const p = await person();
+      const sourceEventId = newId();
+
+      await prisma.$transaction(async (tx) => {
+        const first = await recordPointsForEvent(tx, {
+          personId: p.id,
+          points: 15,
+          sourceEventType: "HoursApproved",
+          sourceEventId,
+        });
+        expect(first.inserted).toBe(true);
+
+        const second = await recordPointsForEvent(tx, {
+          personId: p.id,
+          points: 15,
+          sourceEventType: "HoursApproved",
+          sourceEventId, // same key -> hits the ledger's own unique constraint
+        });
+        expect(second.inserted).toBe(false);
+        expect(second.totalPoints).toBe(BigInt(15)); // unchanged by the rejected duplicate
+
+        // Proves the transaction is still healthy after the caught
+        // duplicate: a further, unrelated write in the same transaction
+        // must still succeed rather than failing with 25P02.
+        const balanceAfter = await tx.pointsBalance.findUniqueOrThrow({ where: { personId: p.id } });
+        expect(balanceAfter.totalPoints).toBe(BigInt(15));
+      });
+
+      const entries = await prisma.pointsLedgerEntry.findMany({ where: { personId: p.id } });
+      expect(entries).toHaveLength(1); // the duplicate never produced a second row
     });
 
     it("an unrecognized event type is a no-op, not an error", async () => {
@@ -261,6 +304,37 @@ describe("Gamification (integration)", () => {
 
       const boardA = await getLeaderboard(prisma, { scope: { scopeType: "team", scopeId: teamAId }, periodStart });
       expect(boardA.entries.map((e) => e.personId)).toEqual([teamAMember.id]);
+    });
+  });
+
+  describe("points_ledger_entry is append-only at the database level (PointsLedgerEntry invariant 1)", () => {
+    it("a direct UPDATE is silently a no-op (CREATE RULE ... DO INSTEAD NOTHING) and leaves the row unchanged", async () => {
+      const p = await person();
+      const event = hoursApprovedEvent({ personId: p.id, durationMinutes: 60 });
+      await consumeInboundEvent(prisma, event);
+      const before = await prisma.pointsLedgerEntry.findFirstOrThrow({ where: { personId: p.id } });
+
+      // Unlike admin.audit_log's raising trigger, the Schema Sketch's rule
+      // for this table is a deliberately silent DO INSTEAD NOTHING — the
+      // statement itself does not throw, but the row must be provably
+      // unchanged afterwards.
+      await prisma.$executeRaw`UPDATE gamification.points_ledger_entry SET points = 999999 WHERE id = ${before.id}`;
+
+      const after = await prisma.pointsLedgerEntry.findUniqueOrThrow({ where: { id: before.id } });
+      expect(after).toEqual(before);
+      expect(after.points).toBe(10);
+    });
+
+    it("a direct DELETE is silently a no-op and the row remains present", async () => {
+      const p = await person();
+      const event = hoursApprovedEvent({ personId: p.id, durationMinutes: 60 });
+      await consumeInboundEvent(prisma, event);
+      const before = await prisma.pointsLedgerEntry.findFirstOrThrow({ where: { personId: p.id } });
+
+      await prisma.$executeRaw`DELETE FROM gamification.points_ledger_entry WHERE id = ${before.id}`;
+
+      const stillThere = await prisma.pointsLedgerEntry.findUnique({ where: { id: before.id } });
+      expect(stillThere).not.toBeNull();
     });
   });
 

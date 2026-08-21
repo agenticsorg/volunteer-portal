@@ -3,6 +3,7 @@ import { newId } from "@volunteer-portal/ulid";
 import { publishGamificationEvent } from "./publishGamificationEvent";
 
 const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = "P2002";
+const SAVEPOINT_NAME = "record_points_for_event";
 
 export type SourceEventType = "HoursApproved" | "ModuleCompleted" | "CourseCompleted" | "ManualAdjustment";
 
@@ -32,6 +33,22 @@ export interface RecordPointsForEventResult {
  * When" clause). Must be called from *inside* the caller's own
  * `prisma.$transaction` — same "runs inside the caller's transaction" shape
  * as `training`'s `evaluateModuleAndCourseCompletion`.
+ *
+ * The `(sourceEventType, sourceEventId)` duplicate check still catches
+ * Prisma's `create()` throwing P2002 (unlike `awardBadge.ts`'s `badge_award`
+ * insert, this table cannot use `INSERT ... ON CONFLICT` at all — Postgres
+ * rejects `ON CONFLICT` outright on any table that has a rule, and this one
+ * has the append-only `points_ledger_no_update`/`points_ledger_no_delete`
+ * rules from the Schema Sketch: `ERROR: INSERT with ON CONFLICT clause
+ * cannot be used with table that has INSERT or UPDATE rules`). A bare
+ * catch would still leave the surrounding Postgres transaction aborted
+ * (`25P02`) after the duplicate-key error, breaking this backstop's own
+ * follow-up read (`pointsBalance`) and every statement a caller runs
+ * afterwards in the same `prisma.$transaction` (`updateStreak`,
+ * `evaluateBadgeCriteria`) — so the `create()` is wrapped in its own
+ * `SAVEPOINT`/`ROLLBACK TO SAVEPOINT`, the standard Postgres idiom for
+ * recovering from an expected, caught error mid-transaction without
+ * aborting the whole thing.
  */
 export async function recordPointsForEvent(
   tx: Prisma.TransactionClient,
@@ -39,6 +56,7 @@ export async function recordPointsForEvent(
 ): Promise<RecordPointsForEventResult> {
   const ledgerEntryId = newId();
 
+  await tx.$executeRawUnsafe(`SAVEPOINT ${SAVEPOINT_NAME}`);
   try {
     await tx.pointsLedgerEntry.create({
       data: {
@@ -50,8 +68,10 @@ export async function recordPointsForEvent(
         reason: input.reason ?? null,
       },
     });
+    await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${SAVEPOINT_NAME}`);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === PRISMA_UNIQUE_CONSTRAINT_VIOLATION) {
+      await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${SAVEPOINT_NAME}`);
       const balance = await tx.pointsBalance.findUnique({ where: { personId: input.personId } });
       return { ledgerEntryId, totalPoints: balance?.totalPoints ?? BigInt(0), inserted: false };
     }
