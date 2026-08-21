@@ -84,6 +84,39 @@ export const ACTIONS = [
   "chapter.assign_lead",
   "dsar.export.request",
   "dsar.erasure.request",
+  // --- volunteering (docs/ddd/volunteering-opportunities.md) ---
+  // `opportunity.create`/`opportunity.manage` share one authorization shape
+  // (chapter_lead scoped to the Opportunity's own chapter, or org_admin) —
+  // "manage" covers Publish/Close/Archive, which the doc gives identical
+  // caller-authority preconditions to (Key Use Case 1's "caller holds
+  // chapter_lead (for the target chapter) or org_admin", reused for the
+  // close/archive transitions the state machine documents but doesn't
+  // re-state authorization for separately).
+  "opportunity.create",
+  "opportunity.manage",
+  // ScheduleShift/CancelShift: same chapter-scoped authority as the parent
+  // Opportunity's own management (a Shift has no independent ownership).
+  "shift.manage",
+  // DecideApplication invariant 4: chapter_lead/mentor scoped to the
+  // Opportunity's chapter, or org_admin. Also gates `applications.listForShift`
+  // (ADR-0007: "field-level"/read authorization reuses the same primitive).
+  "application.decide",
+  // HourEntry invariant 2 ("approve/reject requires ... and the approver may
+  // not be the same Person as personId"): same chapter-scoped authority as
+  // `application.decide`, one action per mutation per the existing
+  // `hour_entry.approve`/`hour_entry.reject` split ADR-0007's own Action
+  // sample already names.
+  "hour_entry.approve",
+  "hour_entry.reject",
+  // ExportApprovedHours (Key Use Case 10) / the `hourEntries.exportApproved`
+  // tRPC query and the `GET /api/v1/hour-entries/export` REST surface built
+  // on top of `queryApprovedHours`: "Caller holds org_admin or chapter_lead
+  // (scoped to the requested chapter, if any filter is applied)" — the same
+  // chapter-scoped-or-org_admin shape as `opportunity.manage`/`shift.manage`,
+  // reusing `hasChapterManagementAuthority` in `rules.ts`. This is the API
+  // layer's own authorization hook for a read `queryApprovedHours` itself
+  // deliberately leaves ungated (see that function's doc comment).
+  "hours.export",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];

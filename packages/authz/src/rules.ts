@@ -35,6 +35,48 @@ function isOrgAdmin(assignments: readonly RoleAssignmentFact[]): boolean {
 }
 
 /**
+ * True iff the subject holds `org_admin` (global), or `chapter_lead` scoped
+ * to exactly `resource.scopeId` (only meaningful when `resource.scopeType
+ * === "chapter"` — an org-wide, `chapterId: null` resource, `scopeType:
+ * "global"`, can only ever be managed by `org_admin`, matching
+ * volunteering-opportunities.md's own framing of chapter-scoped vs.
+ * org-wide Opportunities). Shared by every volunteering "manage this
+ * Opportunity/Shift" action (`opportunity.create`, `opportunity.manage`,
+ * `shift.manage`) — none of these delegate to `mentor`, unlike the
+ * approval-authority actions below.
+ */
+function hasChapterManagementAuthority(
+  resource: Resource,
+  assignments: readonly RoleAssignmentFact[],
+): boolean {
+  return (
+    isOrgAdmin(assignments) ||
+    (resource.scopeType === "chapter" &&
+      hasRoleInScope(assignments, "chapter_lead", "chapter", resource.scopeId))
+  );
+}
+
+/**
+ * True iff the subject holds `org_admin` (global), `chapter_lead` scoped to
+ * `resource.scopeId`, or `mentor` (either globally, or scoped to
+ * `resource.scopeId`) — the exact authority DecideApplication invariant 4
+ * and HourEntry invariant 2 both specify ("`chapter_lead`/`mentor` scoped to
+ * the Opportunity's chapter, or `org_admin`"). Shared by
+ * `application.decide`, `hour_entry.approve`, and `hour_entry.reject`.
+ */
+function hasApprovalAuthority(
+  resource: Resource,
+  assignments: readonly RoleAssignmentFact[],
+): boolean {
+  return (
+    hasChapterManagementAuthority(resource, assignments) ||
+    hasRoleInScope(assignments, "mentor", "global", null) ||
+    (resource.scopeType === "chapter" &&
+      hasRoleInScope(assignments, "mentor", "chapter", resource.scopeId))
+  );
+}
+
+/**
  * Roles a `chapter_lead` may grant/revoke within their own chapter
  * (identity-access.md, `RoleAssignment` invariant 4: "a `chapter_lead`
  * may only grant/revoke `mentor`/`volunteer` scoped to their own
@@ -114,5 +156,49 @@ export const rules: readonly PolicyRule[] = [
     action: "dsar.erasure.request",
     allow: (subject, resource, assignments) =>
       resource.ownerId === subject.id || isOrgAdmin(assignments),
+  },
+  {
+    // CreateOpportunity / PublishOpportunity / (Close/Archive)Opportunity:
+    // "caller holds chapter_lead (for the target chapter) or org_admin"
+    // (Key Use Case 1's precondition).
+    action: "opportunity.create",
+    allow: (_subject, resource, assignments) => hasChapterManagementAuthority(resource, assignments),
+  },
+  {
+    action: "opportunity.manage",
+    allow: (_subject, resource, assignments) => hasChapterManagementAuthority(resource, assignments),
+  },
+  {
+    // ScheduleShift / CancelShift: same authority as the parent Opportunity.
+    action: "shift.manage",
+    allow: (_subject, resource, assignments) => hasChapterManagementAuthority(resource, assignments),
+  },
+  {
+    // DecideApplication invariant 4.
+    action: "application.decide",
+    allow: (_subject, resource, assignments) => hasApprovalAuthority(resource, assignments),
+  },
+  {
+    // HourEntry invariant 2 (approve branch). Self-approval is additionally
+    // blocked at the use-case layer (`resource.ownerId === subject.id`
+    // check) and by the DB's `chk_hour_entries_no_self_approval` — not
+    // repeated here since `can()` has no access to `personId` vs. caller
+    // beyond what `Resource`/`PolicySubject` already carry.
+    action: "hour_entry.approve",
+    allow: (_subject, resource, assignments) => hasApprovalAuthority(resource, assignments),
+  },
+  {
+    // HourEntry invariant 2 (reject branch) — identical authority to approve.
+    action: "hour_entry.reject",
+    allow: (_subject, resource, assignments) => hasApprovalAuthority(resource, assignments),
+  },
+  {
+    // ExportApprovedHours (Key Use Case 10): "Caller holds org_admin or
+    // chapter_lead (scoped to the requested chapter, if any filter is
+    // applied)" — identical shape to `opportunity.manage`/`shift.manage`,
+    // not `hasApprovalAuthority` (a plain `mentor` may approve individual
+    // hour entries but is not granted the bulk grant-report export).
+    action: "hours.export",
+    allow: (_subject, resource, assignments) => hasChapterManagementAuthority(resource, assignments),
   },
 ];

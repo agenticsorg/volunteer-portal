@@ -390,6 +390,223 @@ model DSARRequest {
 //     Always read what `migrate dev`/`migrate diff` proposes against
 //     `admin.audit_log` before applying; a same-type no-op ALTER is
 //     expected and safe to accept, a DROP COLUMN never is.
+// ---------------------------------------------------------------------------
+// Phase 3 — Volunteering & Opportunities: data model only
+// ---------------------------------------------------------------------------
+//
+// The Opportunity, Shift, Application, and HourEntry aggregates from
+// docs/ddd/volunteering-opportunities.md, matching the Schema Sketch in
+// docs/ddd/volunteering-opportunities-schema-api.md field-for-field. All
+// four live in the `volunteering` schema and use real foreign keys between
+// each other — the no-cross-schema-FK rule (ADR-0001) applies only at
+// bounded-context boundaries, not within one. `volunteering.domain_events`
+// (`VolunteeringDomainEvent`, above) already exists from Phase 1; this
+// phase only adds the four aggregate tables. No use cases, no API in this
+// phase — the migration this schema drives is data model only.
+//
+// `chapter_id`, `prerequisite_course_ids`, `created_by_person_id`,
+// `applicant_person_id`, `decided_by_person_id`, `person_id`, and
+// `approver_person_id` are all intentional soft references (plain columns,
+// no relation, no FK) to `identity.persons.id` / `identity.chapters.id` /
+// `training.courses.id` — cross-schema, so no FK is possible or wanted, per
+// the Schema Sketch's own comments and ADR-0001.
+//
+// Several constructs in the Schema Sketch have no Prisma-schema-language
+// equivalent and are hand-authored in the migration SQL instead — same
+// precedent as every hand-authored addition already in this file's earlier
+// phases:
+//   - The `chk_opportunities_publish`, `chk_shifts_time_order`,
+//     `chk_shifts_capacity`, `chk_hour_entries_time_order`,
+//     `chk_hour_entries_duration`, `chk_hour_entries_approval`, and
+//     `chk_hour_entries_no_self_approval` CHECK constraints (no stable
+//     `@@check` attribute in this Prisma version).
+//   - `uq_applications_active_per_shift`, the partial unique index enforcing
+//     Application invariant 1 ("at most one non-terminal/accepted
+//     Application per (applicant, shift)") — Prisma's schema language has
+//     no partial-index syntax.
+//   - `idx_hour_entries_approved_export`, the partial index on
+//     `approved_at WHERE status = 'approved'` backing the grant-export hot
+//     path — same reason.
+//   - The `prevent_approved_hour_entry_mutation()` trigger function and its
+//     `trg_hour_entries_immutable` trigger (ADR-0014: HourEntry invariant 3,
+//     "once approved, the row is immutable" — enforced at the
+//     application/repository layer too, this is the database-level
+//     defense-in-depth backstop) — triggers have no Prisma-schema-language
+//     equivalent, same precedent as `admin.audit_log`'s insert-only
+//     trigger and `identity.persons`'s age-gate trigger.
+//   - `opportunities.search_vector`, the ADR-0017 generated `tsvector`
+//     column, and its GIN index (`idx_opportunities_search`) — per
+//     ADR-0017's own Implementation Notes, `GENERATED ALWAYS AS ... STORED`
+//     columns are not natively representable in Prisma's schema language,
+//     so this column is added via hand-authored migration SQL and modeled
+//     here only as `Unsupported("tsvector")` so Prisma is aware of it for
+//     introspection without trying to manage its generation logic. Built
+//     from `title` (weight A), `category` + `skills_required` (weight B),
+//     and `description` (weight C) — the fields this aggregate actually
+//     has (the Schema Sketch has no separate `location_name`/
+//     `skills_tags_text` denormalized columns the way ADR-0017's own
+//     illustrative example does; generated columns may only reference
+//     other columns on the same row, so `skills_required` is flattened
+//     in-expression via `array_to_string`, not a second denormalized
+//     column).
+//
+//     Same `Unsupported()` round-trip gap as `admin.audit_log.ip_address`
+//     (see that model's comment above), but sharper here: confirmed
+//     directly that `prisma migrate dev`/`migrate diff` run against this
+//     schema proposes `ALTER TABLE volunteering.opportunities ALTER COLUMN
+//     search_vector DROP DEFAULT` (misreading the generated-column
+//     expression as an ordinary column default) *and* `DROP INDEX
+//     volunteering.idx_opportunities_search` (the GIN index has no
+//     `@@index` counterpart here, same precedent as every other
+//     hand-authored partial/GIN index in this file) every time it's run
+//     from this point on. Unlike the `ip_address` case, this proposed diff
+//     is NOT safe to accept — applying it would break the generated column
+//     and silently drop working search infrastructure. Reproduced and
+//     rejected once already (never applied) while building this migration;
+//     any future `migrate dev` prompt proposing exactly these two
+//     statements against `volunteering.opportunities` should be declined
+//     the same way, not applied.
+
+enum VolunteeringOpportunityStatus {
+  draft
+  published
+  closed
+  archived
+
+  @@map("opportunity_status")
+  @@schema("volunteering")
+}
+
+enum VolunteeringLocationType {
+  in_person
+  remote
+  hybrid
+
+  @@map("location_type")
+  @@schema("volunteering")
+}
+
+enum VolunteeringShiftStatus {
+  scheduled
+  cancelled
+  completed
+
+  @@map("shift_status")
+  @@schema("volunteering")
+}
+
+enum VolunteeringApplicationStatus {
+  pending
+  accepted
+  waitlisted
+  declined
+  withdrawn
+
+  @@map("application_status")
+  @@schema("volunteering")
+}
+
+enum VolunteeringHourEntryStatus {
+  submitted
+  approved
+  rejected
+
+  @@map("hour_entry_status")
+  @@schema("volunteering")
+}
+
+model Opportunity {
+  id                    String                         @id
+  chapterId             String?                        @map("chapter_id")
+  title                 String
+  description           String
+  category              String
+  skillsRequired        String[]                       @default([]) @map("skills_required")
+  locationType          VolunteeringLocationType        @map("location_type")
+  minAge                Int                            @default(16) @map("min_age")
+  prerequisiteCourseIds String[]                       @default([]) @map("prerequisite_course_ids")
+  createdByPersonId     String                         @map("created_by_person_id")
+  status                VolunteeringOpportunityStatus  @default(draft)
+  publishedAt           DateTime?                      @map("published_at") @db.Timestamptz(6)
+  closedAt              DateTime?                      @map("closed_at") @db.Timestamptz(6)
+  createdAt             DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  searchVector           Unsupported("tsvector")?       @map("search_vector")
+
+  shifts      Shift[]
+  hourEntries HourEntry[]
+
+  @@index([chapterId], map: "idx_opportunities_chapter")
+  @@index([status], map: "idx_opportunities_status")
+  @@map("opportunities")
+  @@schema("volunteering")
+}
+
+model Shift {
+  id            String                    @id
+  opportunityId String                    @map("opportunity_id")
+  startsAt      DateTime                  @map("starts_at") @db.Timestamptz(6)
+  endsAt        DateTime                  @map("ends_at") @db.Timestamptz(6)
+  timezone      String
+  capacity      Int
+  acceptedCount Int                       @default(0) @map("accepted_count")
+  status        VolunteeringShiftStatus   @default(scheduled)
+  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  opportunity  Opportunity   @relation(fields: [opportunityId], references: [id])
+  applications Application[]
+  hourEntries  HourEntry[]
+
+  @@index([opportunityId], map: "idx_shifts_opportunity")
+  @@index([startsAt], map: "idx_shifts_starts_at")
+  @@map("shifts")
+  @@schema("volunteering")
+}
+
+model Application {
+  id                 String                          @id
+  shiftId            String                          @map("shift_id")
+  applicantPersonId  String                          @map("applicant_person_id")
+  status             VolunteeringApplicationStatus   @default(pending)
+  appliedAt          DateTime                        @default(now()) @map("applied_at") @db.Timestamptz(6)
+  decidedByPersonId  String?                         @map("decided_by_person_id")
+  decidedAt          DateTime?                       @map("decided_at") @db.Timestamptz(6)
+  decisionNote       String?                         @map("decision_note")
+
+  shift Shift @relation(fields: [shiftId], references: [id])
+
+  @@index([shiftId], map: "idx_applications_shift")
+  @@index([applicantPersonId], map: "idx_applications_applicant")
+  @@map("applications")
+  @@schema("volunteering")
+}
+
+model HourEntry {
+  id                 String                        @id
+  personId           String                        @map("person_id")
+  opportunityId      String                        @map("opportunity_id")
+  shiftId            String?                       @map("shift_id")
+  startAt            DateTime                      @map("start_at") @db.Timestamptz(6)
+  endAt              DateTime                      @map("end_at") @db.Timestamptz(6)
+  durationMinutes    Int                           @map("duration_minutes")
+  description        String?
+  status             VolunteeringHourEntryStatus   @default(submitted)
+  submittedAt        DateTime                      @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  approverPersonId   String?                       @map("approver_person_id")
+  approvedAt         DateTime?                     @map("approved_at") @db.Timestamptz(6)
+  rejectedAt         DateTime?                     @map("rejected_at") @db.Timestamptz(6)
+  rejectionReason    String?                       @map("rejection_reason")
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id])
+  shift       Shift?      @relation(fields: [shiftId], references: [id])
+
+  @@index([personId], map: "idx_hour_entries_person")
+  @@index([opportunityId], map: "idx_hour_entries_opportunity")
+  @@map("hour_entries")
+  @@schema("volunteering")
+}
+
 model AuditLog {
   id           String               @id
   occurredAt   DateTime             @default(now()) @map("occurred_at") @db.Timestamptz(6)
