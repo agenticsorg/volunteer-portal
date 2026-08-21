@@ -59,7 +59,14 @@ export async function grantRoleDirect(
  */
 export function contextFor(
   prisma: PrismaClient,
-  person: { id: string; publicSlug: string; displayName: string; avatarUrl: string | null; status: string },
+  person: {
+    id: string;
+    publicSlug: string;
+    displayName: string;
+    avatarUrl: string | null;
+    status: string;
+    primaryChapterId?: string | null;
+  },
 ) {
   return {
     headers: new Headers(),
@@ -71,6 +78,7 @@ export function contextFor(
       displayName: person.displayName,
       avatarUrl: person.avatarUrl,
       status: person.status,
+      primaryChapterId: person.primaryChapterId ?? null,
     },
   };
 }

@@ -248,4 +248,12 @@ export const rules: readonly PolicyRule[] = [
     action: "badge.award",
     allow: (_subject, _resource, assignments) => isOrgAdmin(assignments),
   },
+  {
+    // CreatePost, Post invariant 1 (docs/ddd/community-social.md): only
+    // `org_admin` may create a `scopeType: 'org'` Post — a `chapter_lead`'s
+    // authority is scoped to their own chapter and does not extend to
+    // posting org-wide, same staff-only shape as `points.adjust`/`badge.award`.
+    action: "post.create_org_scope",
+    allow: (_subject, _resource, assignments) => isOrgAdmin(assignments),
+  },
 ];

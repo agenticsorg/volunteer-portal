@@ -150,6 +150,16 @@ export const ACTIONS = [
   // granularity reason `video.captions.approve` is split from `course.manage`.
   "points.adjust",
   "badge.award",
+  // --- community (docs/ddd/community-social.md) ---
+  // CreatePost, Post invariant 1: "A Post's visibility scope cannot exceed
+  // its author's chapter membership unless the author has the `org_admin`
+  // role." The doc's own illustrative check is `can(authorId, "post:org_scope",
+  // {})` (colon spelling is that doc's pseudocode; this catalog keeps the
+  // dot-separated convention every other action here already uses) — gated
+  // the same staff-only, org-wide shape as `points.adjust`/`badge.award`
+  // (no chapter delegates this; a `chapter_lead` may only post *into* their
+  // own chapter, never org-wide).
+  "post.create_org_scope",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];

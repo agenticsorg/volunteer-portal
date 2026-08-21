@@ -107,9 +107,9 @@ All events are written to `community.domain_events` in the same transaction as t
 1. **CreatePost** — validates body length and the scope invariant (chapter membership vs. `org_admin`), snapshots `authorDisplayName`/`authorChapterId`, persists the Post, emits `PostCreated`.
 2. **GiveKudos** — validates `fromPersonId <> toPersonId` and the achievement-reference all-or-nothing rule, persists the Kudos, creates a native `FeedEntry` (`kind = 'kudos_given'`), emits `KudosGiven`.
 3. **CreateTeam** — validates `(chapterId, name)` uniqueness among active Teams, creates the Team with the creator as an initial `lead` membership, emits `TeamCreated`.
-4. **JoinTeam** — validates no existing open membership for `(teamId, personId)`, opens a `TeamMembership` with `role = 'member'`, emits `TeamJoined`.
+4. **JoinTeam** — validates no existing open membership for `(teamId, personId)`, opens a `TeamMembership` with `role = 'member'`, creates a native `FeedEntry` (`kind = 'team_joined'`), emits `TeamJoined`.
 5. **RequestMentorship** — validates the mentee has no other open (`requested`/`active`) Mentorship, creates the pairing in `requested` status, emits `MentorshipRequested`.
-6. **AcceptMentorship** — transitions `requested → active`, sets `startedAt`, emits `MentorshipStarted`.
+6. **AcceptMentorship** — transitions `requested → active`, sets `startedAt`, creates a native `FeedEntry` (`kind = 'mentorship_started'`), emits `MentorshipStarted`.
 7. **RebuildFeedProjection** — an operational/admin use case (not user-facing): given a scope and/or source type, truncates and re-derives affected `FeedEntry` rows from `community.post` (for native entries) and by replaying the relevant external contexts' outbox history from `community.processed_events`'s watermark (for projected entries). Used to recover from a projection bug or a schema change to `payload`/`summary` rendering, without needing the upstream contexts to re-emit events.
 
 **Supporting handlers (system-triggered, not user-initiated use cases):**
