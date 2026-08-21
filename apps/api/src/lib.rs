@@ -26,6 +26,8 @@ pub mod project_name_adapter;
 pub mod projects;
 pub mod resend_email_provider;
 pub mod routes;
+pub mod semantic_matching;
+pub mod semantic_matching_client;
 pub mod session;
 pub mod state;
 pub mod verification_letter;
@@ -101,6 +103,11 @@ pub fn build_router(state: AppState) -> Router {
             get(admin_reporting::export_volunteer_roster_csv),
         )
         .route("/admin/reports/hours", get(admin_reporting::hours_report))
+        .route("/projects/suggest", get(semantic_matching::suggest_projects))
+        .route(
+            "/volunteers/me/hours-suggestions",
+            get(semantic_matching::hours_suggestions),
+        )
         .route(
             "/discord/interactions",
             post(discord_interactions::handle_interaction),

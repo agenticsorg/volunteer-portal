@@ -4,6 +4,8 @@ use hours_verification::{AssignmentSnapshotQuery, ProjectNameQuery};
 use kernel::ScopedDb;
 use projects_assignments::LeadMembershipQuery;
 
+use crate::semantic_matching_client::SemanticMatchClient;
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: ScopedDb,
@@ -24,6 +26,12 @@ pub struct AppState {
     /// `VerificationLetterService::draft` to label each project in a
     /// letter's per-project breakdown.
     pub project_names: Arc<dyn ProjectNameQuery>,
+    /// ADR-0013 / Prompt 9.1: the client for the isolated
+    /// `services/semantic-matching` TypeScript service -- read-only,
+    /// carries no authorization context. Every id it returns is
+    /// re-checked against RLS before being shown
+    /// (`semantic_matching.rs`'s handlers).
+    pub semantic_match: Arc<dyn SemanticMatchClient>,
     /// Discord's interactions application public key (hex-encoded),
     /// verified against `X-Signature-Ed25519`/`X-Signature-Timestamp`
     /// before any interaction payload is parsed (Prompt 5.2, ADR-0008).
