@@ -11,7 +11,7 @@ use axum::response::IntoResponse;
 use axum::Json;
 use chrono::Utc;
 use identity_access::{Agreements, Availability, SqlxVolunteerRepository, VolunteerRepository};
-use kernel::{record_audit_events, Id, Skill, VolunteerId};
+use kernel::{record_audit_events, record_outbox_events, Id, Skill, VolunteerId};
 use serde::Deserialize;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -134,6 +134,9 @@ pub async fn approve_volunteer(
         .await
         .map_err(|_| ApiError::Internal)?;
     record_audit_events(&mut tx, &events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &events)
         .await
         .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;

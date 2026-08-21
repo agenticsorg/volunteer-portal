@@ -43,6 +43,12 @@ typst-layout = { workspace = true }
 typst-as-lib = { workspace = true }
 typst-pdf = { workspace = true }
 typst-assets = { workspace = true }
+# ADR-0010 (Prompt 7.1): compile-time-checked email templates, and the
+# Postmark (hand-rolled reqwest client, no official Rust SDK) / Resend
+# (official SDK, the documented fallback) providers behind
+# `notifications::EmailProvider`.
+askama = "0.16.0"
+resend-rs = { version = "0.30.2", default-features = false, features = ["rustls-tls"] }
 
 [dev-dependencies]
 chrono.workspace = true
@@ -53,3 +59,10 @@ tower = { workspace = true, features = ["util"] }
 # (Prompt 6.1) -- not from the Typst source, from the actual compiled
 # output.
 pdf-extract = "0.12"
+# Stands in for the real Postmark/Resend HTTP APIs in Prompt 7.1's
+# integration tests -- no live provider account/credentials exist in
+# this environment (matching Prompt 5.1's `reconcile_discord_roles.rs`
+# precedent for a real-but-credential-blocked integration), so this
+# verifies the actual HTTP request/response contract against a mock
+# server rather than only unit-testing template rendering in isolation.
+wiremock = "0.6"

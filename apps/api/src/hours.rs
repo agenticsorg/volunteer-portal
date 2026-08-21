@@ -16,7 +16,7 @@ use axum::Json;
 use chrono::NaiveDate;
 use hours_verification::{HourEntry, HourEntryRepository, Hours, HoursTotalsQuery, SqlxHourEntryRepository};
 use identity_access::{Role, SqlxVolunteerSummaryQuery, VolunteerSummaryQuery};
-use kernel::{record_audit_events, HourEntryId, Id, ProjectId, VolunteerId};
+use kernel::{record_audit_events, record_outbox_events, HourEntryId, Id, ProjectId, VolunteerId};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use sqlx::{Postgres, Transaction};
@@ -109,6 +109,9 @@ pub async fn log_hours(
         .await
         .map_err(|_| ApiError::Internal)?;
     record_audit_events(&mut tx, &events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &events)
         .await
         .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;
@@ -231,6 +234,9 @@ pub async fn bulk_approve_hours(
     record_audit_events(&mut tx, &all_events)
         .await
         .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &all_events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;
 
     Ok(Json(result))
@@ -285,6 +291,9 @@ pub async fn reject_hours(
     record_audit_events(&mut tx, &events)
         .await
         .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -331,6 +340,9 @@ pub async fn adjust_hours(
         .await
         .map_err(|_| ApiError::Internal)?;
     record_audit_events(&mut tx, &events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &events)
         .await
         .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;

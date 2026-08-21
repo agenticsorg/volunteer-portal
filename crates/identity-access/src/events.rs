@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use kernel::{ActorId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent, VolunteerId};
+use kernel::{ActorId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent, OutboxEvent, VolunteerId};
 use uuid::Uuid;
 
 use crate::oauth::OAuthProvider;
@@ -26,6 +26,21 @@ impl DomainEvent for VolunteerOnboarded {
     }
     fn as_auditable(&self) -> Option<&dyn AuditableEvent> {
         Some(self)
+    }
+    fn as_outboxable(&self) -> Option<&dyn OutboxEvent> {
+        Some(self)
+    }
+}
+
+/// notifications.md trigger 1 (signup confirmation) -- payload carries
+/// `name`/`email` directly since the emitting `Volunteer::signup` call
+/// already has both in hand; the dispatcher still independently resolves
+/// the live `VolunteerContact` at send time rather than trusting this
+/// payload's copy (a volunteer could change their email between signup
+/// and the poller's next tick).
+impl OutboxEvent for VolunteerOnboarded {
+    fn payload(&self) -> serde_json::Value {
+        serde_json::json!({ "volunteer_id": self.volunteer_id, "name": self.name, "email": self.email })
     }
 }
 

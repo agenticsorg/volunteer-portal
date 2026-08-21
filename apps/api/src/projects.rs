@@ -16,7 +16,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use identity_access::{Role, SqlxVolunteerSummaryQuery, VolunteerSummaryQuery};
-use kernel::{record_audit_events, Id, ProjectId, Skill};
+use kernel::{record_audit_events, record_outbox_events, Id, ProjectId, Skill};
 use projects_assignments::{
     Assignment, AssignmentRepository, EventSchedule, Project, ProjectRepository, ProjectType,
     SqlxAssignmentRepository, SqlxProjectRepository,
@@ -144,6 +144,9 @@ pub async fn create_project(
     record_audit_events(&mut tx, &events)
         .await
         .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;
 
     Ok((StatusCode::CREATED, Json(project.id().to_string())))
@@ -186,6 +189,9 @@ pub async fn apply_to_project(
         .await
         .map_err(|_| ApiError::Internal)?;
     record_audit_events(&mut tx, &events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &events)
         .await
         .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;
@@ -260,6 +266,9 @@ pub async fn approve_assignment(
     record_audit_events(&mut tx, &events)
         .await
         .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -299,6 +308,9 @@ pub async fn remove_assignment(
         .await
         .map_err(|_| ApiError::Internal)?;
     record_audit_events(&mut tx, &events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &events)
         .await
         .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;

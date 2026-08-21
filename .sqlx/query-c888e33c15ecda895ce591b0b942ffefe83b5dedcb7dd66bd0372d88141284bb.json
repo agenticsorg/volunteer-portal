@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select exists(\n                   select 1 from notification_attempt\n                   where source_event_id = $1 and status = 'sent'\n               ) as \"exists!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c888e33c15ecda895ce591b0b942ffefe83b5dedcb7dd66bd0372d88141284bb"
+}

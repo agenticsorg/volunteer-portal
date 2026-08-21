@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into domain_event_outbox (event_type, payload, occurred_at)\n               values ($1, $2, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "99283cd83121c1121949dcf60cfd5b50f73a2346f38052a75e1a9010bf7db67f"
+}

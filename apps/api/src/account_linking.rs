@@ -5,7 +5,7 @@
 use identity_access::{
     Availability, OAuthProvider, SqlxVolunteerRepository, Volunteer, VolunteerRepository,
 };
-use kernel::{record_audit_events, VolunteerId};
+use kernel::{record_audit_events, record_outbox_events, VolunteerId};
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -116,6 +116,9 @@ pub async fn resolve_login(
     record_audit_events(&mut tx, &events)
         .await
         .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;
 
     Ok(LoginResolution::LoggedIn(id))
@@ -164,6 +167,9 @@ pub async fn complete_link(
         .await
         .map_err(|_| ApiError::Internal)?;
     record_audit_events(&mut tx, &events)
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    record_outbox_events(&mut tx, &events)
         .await
         .map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;

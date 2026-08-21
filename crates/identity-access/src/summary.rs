@@ -15,6 +15,20 @@ pub struct VolunteerSummary {
     pub status: VolunteerStatus,
 }
 
+/// Notifications' one narrow read of contact info -- deliberately
+/// separate from `VolunteerSummary` (which has no `email`/`discord_id`
+/// fields at all) rather than widening that type, since nothing else
+/// that consumes `VolunteerSummary` should be tempted to reach for a
+/// volunteer's contact details (notifications.md: "volunteer contact
+/// info via identity-access's public read types").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VolunteerContact {
+    pub id: VolunteerId,
+    pub name: String,
+    pub email: String,
+    pub discord_id: Option<String>,
+}
+
 #[async_trait]
 pub trait VolunteerSummaryQuery: Send + Sync {
     async fn summary(
@@ -22,6 +36,17 @@ pub trait VolunteerSummaryQuery: Send + Sync {
         tx: &mut Transaction<'_, Postgres>,
         id: VolunteerId,
     ) -> Result<Option<VolunteerSummary>, RepoError>;
+
+    /// Backs Notifications' dispatcher (Prompt 7.1): every trigger
+    /// resolves its recipient's send-to address (and, for the
+    /// `DiscordDm` channel, their linked `discord_id`) via this method
+    /// at dispatch time, regardless of what a given outbox event's own
+    /// payload carries.
+    async fn contact_info(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        id: VolunteerId,
+    ) -> Result<Option<VolunteerContact>, RepoError>;
 
     /// Backs Discord Integration's "who should have the base role"
     /// reconcile query (Phase 5).
@@ -106,5 +131,25 @@ impl VolunteerSummaryQuery for SqlxVolunteerSummaryQuery {
             .into_iter()
             .map(|r| (kernel::Id::from_uuid(r.id), r.discord_id))
             .collect())
+    }
+
+    async fn contact_info(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        id: VolunteerId,
+    ) -> Result<Option<VolunteerContact>, RepoError> {
+        let row = sqlx::query!(
+            r#"select id, name, email, discord_id from volunteer where id = $1"#,
+            id.as_uuid()
+        )
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        Ok(row.map(|r| VolunteerContact {
+            id: kernel::Id::from_uuid(r.id),
+            name: r.name,
+            email: r.email,
+            discord_id: r.discord_id,
+        }))
     }
 }

@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select exists(\n                   select 1 from notification_attempt\n                   where trigger_type = 'meeting_reminder'\n                     and recipient_id = $1\n                     and project_id = $2\n                     and next_occurrence_at = $3\n                     and status = 'sent'\n               ) as \"exists!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "62e5d32e45d5fb6231520f2e59b01b1c0a6ed65271770532b076483e2c45a3d0"
+}

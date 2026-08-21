@@ -153,3 +153,6 @@ pub type HourEntryId = Id<HourEntryMarker>;
 
 pub struct DataSubjectRequestMarker;
 pub type DataSubjectRequestId = Id<DataSubjectRequestMarker>;
+
+pub struct NotificationAttemptMarker;
+pub type NotificationAttemptId = Id<NotificationAttemptMarker>;

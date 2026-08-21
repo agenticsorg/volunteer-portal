@@ -10,7 +10,9 @@ kernel = { workspace = true }
 identity-access = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+rust_decimal = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
