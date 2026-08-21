@@ -12,7 +12,12 @@
  * "Phase 9 — Admin & Reporting"): the domain/application layer, plus (this
  * stage) the tRPC API layer under `api/trpc/router.ts`
  * (`server/api/routers/admin.ts` is the thin adapter that mounts it on the
- * root `appRouter`, same split every other module's own router follows).
+ * root `appRouter`, same split every other module's own router follows),
+ * plus the API Contract Sketch's two REST routes for `GetExportDownloadUrl`
+ * (Key Use Case 7) — `app/api/v1/admin/exports/[exportJobId]/download/
+ * route.ts` and `app/api/v1/admin/exports/[exportJobId]/route.ts` — the
+ * "a download link needs to be a stable, fetchable URL, not a tRPC call"
+ * exception the sketch calls out.
  *
  * - `ReportDefinition`/`ExportJob` lifecycle (`CreateReportDefinition`,
  *   `UpdateReportDefinition`, `RequestExportJob`, `ProcessExportJob`,

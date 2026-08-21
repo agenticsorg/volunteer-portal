@@ -43,8 +43,13 @@
  *
  * The sketch's two REST routes (`GET /api/v1/admin/exports/:exportJobId/
  * download` and `GET /api/v1/admin/exports/:exportJobId`) are NOT built
- * here — this stage's own scope is the tRPC router only; those Route
- * Handlers are a separate build item.
+ * here — this router's own scope is the tRPC surface only. They live at
+ * `app/api/v1/admin/exports/[exportJobId]/download/route.ts` and
+ * `app/api/v1/admin/exports/[exportJobId]/route.ts`, session-authenticated
+ * via `server/auth/session-person.ts`'s `resolveRequestPerson` rather than
+ * going through this router, same "a stable, fetchable URL, not a tRPC
+ * call" reasoning the API Contract Sketch gives for keeping them off this
+ * `adminRouter` entirely.
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
