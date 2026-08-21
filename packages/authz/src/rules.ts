@@ -333,4 +333,34 @@ export const rules: readonly PolicyRule[] = [
     action: "notification.preference.manage",
     allow: (subject, resource) => resource.ownerId === subject.id,
   },
+  {
+    // CreateReportDefinition / UpdateReportDefinition: staff-only, no
+    // chapter delegation — same shape as `points.adjust`/`badge.award`.
+    action: "report_definition.manage",
+    allow: (_subject, _resource, assignments) => isOrgAdmin(assignments),
+  },
+  {
+    // RequestExportJob: staff-only (every `exportJob.*` procedure in the
+    // doc's API Contract Sketch is `orgAdminProcedure`).
+    action: "export.request",
+    allow: (_subject, _resource, assignments) => isOrgAdmin(assignments),
+  },
+  {
+    // GetExportDownloadUrl: "the original requester or any org_admin" —
+    // `resource.ownerId` is the ExportJob's own `requestedByPersonId`.
+    action: "export.download",
+    allow: (subject, resource, assignments) => resource.ownerId === subject.id || isOrgAdmin(assignments),
+  },
+  {
+    // OrchestrateDsarRequest: staff-only admin-console DSAR trigger, no
+    // "self" branch (distinct from `dsar.export.request`/
+    // `dsar.erasure.request`'s self-or-org_admin shape above).
+    action: "dsar.orchestrate",
+    allow: (_subject, _resource, assignments) => isOrgAdmin(assignments),
+  },
+  {
+    // SearchAuditLog: staff-only, org-wide.
+    action: "audit_log.search",
+    allow: (_subject, _resource, assignments) => isOrgAdmin(assignments),
+  },
 ];

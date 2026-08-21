@@ -16,8 +16,15 @@
  * touches this file and `signing.ts`'s URL-building — the
  * `DSARRequest` state machine and the `identityRouter`/REST surface stay
  * identical.
+ *
+ * `deleteExportBundle` (added Phase 9) backs `identity`'s own
+ * `sweepExpiredDsarExportBundles` — the `dsar_export_bundles` retention
+ * class's owning-schema cleanup function (ADR-0014 §3: "7 days ->
+ * hard_delete (R2 lifecycle rule mirrors this)"). This local-disk
+ * substitute has no R2 bucket lifecycle rule to mirror, so that job
+ * deletes the file directly instead.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 function exportDir(): string {
@@ -38,5 +45,14 @@ export async function readExportBundle(dsarId: string): Promise<string | null> {
     return readFileSync(exportFilePath(dsarId), "utf8");
   } catch {
     return null;
+  }
+}
+
+/** Idempotent: deleting an already-deleted (or never-written) bundle is a no-op, not an error. */
+export async function deleteExportBundle(dsarId: string): Promise<void> {
+  try {
+    unlinkSync(exportFilePath(dsarId));
+  } catch {
+    /* already gone — fine */
   }
 }

@@ -2041,3 +2041,51 @@ model ExportJob {
   @@map("export_job")
   @@schema("admin")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 9 — Admin & Reporting: retention_policies + admin's own processed_events
+// ---------------------------------------------------------------------------
+//
+// `admin.retention_policies` is ADR-0014 §3's table, restated (not
+// re-designed) here — the prior migration's own header comment explicitly
+// left it out ("left for whichever later stage actually builds the
+// retention_sweep job"); this is that stage. `updated_by` is a soft
+// reference to `identity.person.id` (ADR-0014's own literal DDL writes it
+// as `references identity.users(id)`, but this schema has no
+// `identity.users` table — `identity.persons` is this codebase's Person
+// table — and, more importantly, a cross-schema FK is exactly what every
+// other admin table's own comments already reject; a plain, unvalidated
+// TEXT column matches `report_definition.created_by_person_id` /
+// `export_job.requested_by_person_id`'s established "by ID only, no FK"
+// convention instead of the ADR's own illustrative FK).
+//
+// `admin.processed_events` is this schema's own idempotency ledger for
+// `consumeIdentityDsarEvents` (`OrchestrateDsarRequest`'s completion
+// consumer) — the exact same single-consumer-per-source-schema shape
+// `notifications.processed_events` (`NotificationsProcessedEvent`, above)
+// already established, not `packages/outbox`'s generic `(consumer,
+// event_id)` ledger: `admin` has exactly one logical external consumer
+// (identity's DSAR completion events), the same "one job per source
+// schema" shape notifications' own header comment documents.
+model RetentionPolicy {
+  id            String    @id
+  dataClass     String    @unique @map("data_class")
+  retentionDays Int       @map("retention_days")
+  action        String
+  enabled       Boolean   @default(true)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  updatedBy     String?   @map("updated_by")
+
+  @@map("retention_policies")
+  @@schema("admin")
+}
+
+model AdminProcessedEvent {
+  id            String   @id
+  sourceContext String   @map("source_context")
+  eventType     String   @map("event_type")
+  processedAt   DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@map("processed_events")
+  @@schema("admin")
+}

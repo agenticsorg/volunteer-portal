@@ -210,6 +210,35 @@ export const ACTIONS = [
   // is the `personId` whose preference is being written (the resource has
   // no chapter/team scope of its own, so `scopeType: "global"`).
   "notification.preference.manage",
+  // --- admin (docs/ddd/admin-reporting.md) ---
+  // CreateReportDefinition / UpdateReportDefinition: both are `orgAdminProcedure`
+  // in the doc's own API Contract Sketch — one action for both mutations,
+  // same per-aggregate (not per-mutation) granularity `course.manage`
+  // already uses for training's own staff-only authoring actions.
+  "report_definition.manage",
+  // RequestExportJob (Key Use Case 3): "validates authorization
+  // (`can(subject, 'export:request', {type, scope})`)" — the doc's own
+  // illustrative action name, colon-normalized to this catalog's
+  // dot-separated convention (same normalization `post.create_org_scope`'s
+  // own comment already documents for a colon-spelled doc example). Every
+  // `exportJob.*` procedure in the API Contract Sketch is `orgAdminProcedure`,
+  // so, like `dsar.orchestrate`/`audit_log.search` below, this is staff-only
+  // with no chapter delegation.
+  "export.request",
+  // GetExportDownloadUrl (Key Use Case 7): "generally: the original
+  // requester or any `org_admin`" — an ownership-or-staff test,
+  // `resource.ownerId` is the `ExportJob.requestedByPersonId`.
+  "export.download",
+  // OrchestrateDsarRequest (Key Use Case 4): `orgAdminProcedure` in the API
+  // Contract Sketch (`exportJob.orchestrateDsar`) — staff-only, no
+  // "self" branch (unlike `dsar.export.request`/`dsar.erasure.request`
+  // above, which identity's own self-service DSAR flow gates): this is
+  // specifically the admin-console "trigger on someone's behalf" surface.
+  "dsar.orchestrate",
+  // SearchAuditLog (Key Use Case 6): `orgAdminProcedure`
+  // (`auditLog.search`) — staff-only, org-wide by nature (an audit search
+  // is not scoped to a single chapter in the doc's own filter shape).
+  "audit_log.search",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];

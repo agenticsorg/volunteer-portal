@@ -80,6 +80,28 @@ export type { RequestErasureInput, ErasureResult } from "./application/requestEr
 export { getDsarStatus } from "./application/getDsarStatus";
 export type { DsarRequestStatus } from "./application/getDsarStatus";
 
+/**
+ * The one command `admin`'s `OrchestrateDsarRequest` is allowed to call
+ * (docs/ddd/admin-reporting.md, Integration & Anti-Corruption Notes: "DSAR
+ * orchestration is a command, not a data pipe") — never a direct read or
+ * write of `identity.dsar_requests`/`identity.persons` from outside this
+ * module. See `submitDsarRequest.ts`'s own doc comment for how its
+ * `DsarExportCompleted`/`DsarEraseCompleted` completion events correlate
+ * back to the caller's own aggregate.
+ */
+export { submitDsarRequest } from "./application/submitDsarRequest";
+export type { DsarOperation, SubmitDsarRequestInput, SubmittedDsarRequest } from "./application/submitDsarRequest";
+
+/**
+ * `inactive_volunteer_pii` / `dsar_export_bundles`'s owning-schema cleanup
+ * functions (ADR-0014 §3), invoked directly by `admin`'s `retention_sweep`
+ * job — never a generic cross-schema mechanism.
+ */
+export { sweepInactivePersons } from "./application/sweepInactivePersons";
+export type { SweepInactivePersonsResult } from "./application/sweepInactivePersons";
+export { sweepExpiredDsarExportBundles } from "./application/sweepExpiredDsarExportBundles";
+export type { SweepExpiredDsarExportBundlesResult } from "./application/sweepExpiredDsarExportBundles";
+
 export {
   AgeGateError,
   GuardianConsentRequiredError,
