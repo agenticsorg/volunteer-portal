@@ -236,4 +236,16 @@ export const rules: readonly PolicyRule[] = [
     allow: (subject, resource, assignments) =>
       resource.ownerId === subject.id || hasContentAuthority(assignments),
   },
+  {
+    // AdminAdjustPoints (Key Use Case 9): "staff-only escape hatch" — an
+    // org-wide governance action with no chapter delegation, gated the same
+    // as `chapter.create`/`chapter.assign_lead`.
+    action: "points.adjust",
+    allow: (_subject, _resource, assignments) => isOrgAdmin(assignments),
+  },
+  {
+    // adminAwardBadge: same staff-only, org-wide authority as `points.adjust`.
+    action: "badge.award",
+    allow: (_subject, _resource, assignments) => isOrgAdmin(assignments),
+  },
 ];
