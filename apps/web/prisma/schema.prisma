@@ -1546,3 +1546,188 @@ model CommunityProcessedEvent {
   @@map("processed_events")
   @@schema("community")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 7 — Moderation & Trust & Safety: schema only (report intake,
+// graduated enforcement ladder)
+// ---------------------------------------------------------------------------
+//
+// The Report and ModerationAction aggregates from
+// docs/ddd/moderation-trust-safety.md, matching that doc's own Schema
+// Sketch field-for-field. `moderation.domain_events`
+// (`ModerationDomainEvent`, above) already exists from Phase 1; this phase
+// adds the two aggregate tables. No use cases, no event consumers, no API
+// in this migration — those are a later stage; this migration is data
+// model only.
+//
+// CRITICAL, already-resolved constraint (ADR-0014 §4, "There is one audit
+// log, not two"): this schema does NOT get its own `audit_log` table.
+// Every privileged mutation in this context (a later stage's job) writes
+// through Phase 1's shared `packages/audit` `recordAuditEvent()` into the
+// single `admin.audit_log`, exactly like every other bounded context —
+// there is no `moderation.audit_log` model anywhere below, and none should
+// ever be added. `grep -i audit_log` against this migration's own SQL
+// output turns up nothing but this comment.
+//
+// `reporter_person_id`, `assigned_moderator_id` (Report), and
+// `target_person_id`/`moderator_person_id`/`revoked_by_person_id`
+// (ModerationAction) are intentional soft references (plain columns, no
+// relation, no FK) to `identity.persons.id` — cross-schema, so no FK is
+// possible or wanted, per the Schema Sketch's own comments and ADR-0001.
+// `scope_id` on both tables is likewise a soft reference to
+// `identity.chapters.id` (NULL iff `scope_type = 'org'`). `reported_entity_type`
+// + `reported_entity_id` (Report) is the polymorphic, never-joined
+// `{type, id}` pointer described in the doc's "Reported Entity" term —
+// deliberately untyped/unconstrained at the DB level; the closed set of
+// valid `reportedEntityType` values is enforced at the application layer
+// (Zod, per the API Contract Sketch), not a Postgres enum, so a future
+// bounded context can become reportable without a migration here.
+//
+// `Report.resolutionActionId` and `ModerationAction.relatedReportId` ARE
+// real, same-schema FKs (the no-cross-schema-FK rule applies only at
+// bounded-context boundaries, not within one) — and deliberately circular:
+// a Report may resolve to a ModerationAction, and a ModerationAction may
+// have been prompted by a Report. The Schema Sketch calls this out
+// explicitly ("Deferred FK, added after both tables exist") since one
+// direction can't be a same-statement `REFERENCES` when both tables are
+// being created together; `prisma migrate dev`'s diff engine resolves this
+// itself by ordering `CREATE TABLE` before the second table's
+// `ADD CONSTRAINT`, same outcome as the sketch's own hand-ordered SQL, no
+// hand-editing required for this part. Both are `ON DELETE SET NULL` (a
+// resolved Report or a related-to ModerationAction is never cascaded away
+// by the other side's deletion — moderation rows are never deleted in this
+// system in practice, but the constraint still matches the sketch exactly).
+//
+// Several constructs in the Schema Sketch have no Prisma-schema-language
+// equivalent and are hand-authored in the migration SQL instead — same
+// precedent as every hand-authored addition already in this file's earlier
+// phases:
+//   - `chk_report_scope`, `chk_report_evidence_max`, `chk_report_no_self`,
+//     `chk_moderation_action_scope`, `chk_moderation_action_duration`
+//     (Invariant 1: `warn`/`ban` never time-boxed), and
+//     `chk_moderation_action_ban_org` (Invariant 3: a `ban` is always
+//     org-scoped) CHECK constraints — the exact six inline CHECKs the
+//     Schema Sketch itself writes (no stable `@@check` attribute in this
+//     Prisma version).
+//   - `idx_moderation_action_expiry`, the partial index on `ends_at WHERE
+//     status = 'active' AND ends_at IS NOT NULL` backing the hourly
+//     `ExpireModerationActions` sweep's hot path — Prisma's schema language
+//     has no partial-index syntax. `idx_report_queue`, `idx_report_entity`,
+//     `idx_report_assigned`, `idx_moderation_action_target`, and
+//     `idx_moderation_action_scope` are all plain (non-partial) indexes and
+//     so DO have `@@index` counterparts below.
+
+enum ModerationReportStatus {
+  open
+  reviewing
+  resolved
+  dismissed
+
+  @@map("report_status")
+  @@schema("moderation")
+}
+
+enum ModerationScopeType {
+  org
+  chapter
+
+  @@map("scope_type")
+  @@schema("moderation")
+}
+
+enum ModerationActionType {
+  warn
+  mute
+  suspend
+  ban
+
+  @@map("action_type")
+  @@schema("moderation")
+}
+
+enum ModerationActionStatus {
+  active
+  expired
+  revoked
+
+  @@map("action_status")
+  @@schema("moderation")
+}
+
+// Aggregate root (docs/ddd/moderation-trust-safety.md "Report"). The
+// polymorphic `{reportedEntityType, reportedEntityId}` pointer plus
+// `reportedContentSnapshot` (invariant 2: captured once at file-time, never
+// re-synced — the evidentiary guarantee this whole aggregate exists for)
+// are the anti-corruption boundary this context uses instead of ever
+// joining into another schema's tables; see the header comment above.
+// `scopeType`/`scopeId` are copied from the reported entity's own scope at
+// file-time (not a live read) so the report queue can be filtered without a
+// cross-schema join. `evidenceAttachments` is a JSONB array of the
+// EvidenceAttachment value object (`{r2ObjectKey, contentType, sizeBytes}`),
+// 0-6 per Report, never binary data — same shape convention as
+// `community.post.attachments`.
+model Report {
+  id                       String                 @id
+  reporterPersonId         String                 @map("reporter_person_id")
+  reportedEntityType       String                 @map("reported_entity_type")
+  reportedEntityId         String                 @map("reported_entity_id")
+  reportedContentSnapshot  Json                   @default("{}") @map("reported_content_snapshot")
+  reason                   String
+  reasonDetail             String?                @map("reason_detail")
+  evidenceAttachments      Json                   @default("[]") @map("evidence_attachments")
+  status                   ModerationReportStatus @default(open)
+  scopeType                ModerationScopeType    @map("scope_type")
+  scopeId                  String?                @map("scope_id")
+  assignedModeratorId      String?                @map("assigned_moderator_id")
+  resolutionNotes          String?                @map("resolution_notes")
+  resolutionActionId       String?                @map("resolution_action_id")
+  createdAt                DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  resolvedAt               DateTime?              @map("resolved_at") @db.Timestamptz(6)
+
+  resolutionAction ModerationAction?  @relation("ReportResolutionAction", fields: [resolutionActionId], references: [id], onDelete: SetNull)
+  relatedActions   ModerationAction[] @relation("ModerationActionRelatedReport")
+
+  @@index([status, scopeType, scopeId, id(sort: Desc)], map: "idx_report_queue")
+  @@index([reportedEntityType, reportedEntityId], map: "idx_report_entity")
+  @@index([assignedModeratorId, status], map: "idx_report_assigned")
+  @@map("report")
+  @@schema("moderation")
+}
+
+// Aggregate root (docs/ddd/moderation-trust-safety.md "ModerationAction"):
+// one independently-revocable rung on the graduated enforcement ladder
+// (`warn`/`mute`/`suspend`/`ban`) issued against a target Person. Duration
+// invariant 1 (`warn`/`ban` never time-boxed) and invariant 3 (a `ban` is
+// always `org`-scoped regardless of report origin) are enforced defensively
+// at the database level via the two hand-authored CHECK constraints in this
+// migration's SQL, in addition to the `TakeModerationAction` application
+// service's own authority/duration validation (a later stage). Invariant 5
+// (multiple `active` actions may coexist against the same target — no
+// "current sanction level" collapse) is a deliberate absence of any unique
+// constraint on `(targetPersonId, status)`, matching the doc exactly.
+model ModerationAction {
+  id                  String                 @id
+  actionType          ModerationActionType   @map("action_type")
+  targetPersonId      String                 @map("target_person_id")
+  moderatorPersonId   String                 @map("moderator_person_id")
+  reason              String
+  relatedReportId     String?                @map("related_report_id")
+  scopeType           ModerationScopeType    @map("scope_type")
+  scopeId             String?                @map("scope_id")
+  startsAt            DateTime               @default(now()) @map("starts_at") @db.Timestamptz(6)
+  endsAt              DateTime?              @map("ends_at") @db.Timestamptz(6)
+  status              ModerationActionStatus @default(active)
+  revokedByPersonId   String?                @map("revoked_by_person_id")
+  revokedAt           DateTime?              @map("revoked_at") @db.Timestamptz(6)
+  revokeReason        String?                @map("revoke_reason")
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  relatedReport   Report?  @relation("ModerationActionRelatedReport", fields: [relatedReportId], references: [id], onDelete: SetNull)
+  resolvedReports Report[] @relation("ReportResolutionAction")
+
+  @@index([targetPersonId, status, startsAt(sort: Desc)], map: "idx_moderation_action_target")
+  @@index([scopeType, scopeId, startsAt(sort: Desc)], map: "idx_moderation_action_scope")
+  @@map("moderation_action")
+  @@schema("moderation")
+}
