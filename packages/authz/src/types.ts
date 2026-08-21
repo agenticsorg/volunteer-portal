@@ -117,6 +117,30 @@ export const ACTIONS = [
   // layer's own authorization hook for a read `queryApprovedHours` itself
   // deliberately leaves ungated (see that function's doc comment).
   "hours.export",
+  // --- training (docs/ddd/training-learning.md) ---
+  // CreateCourse / AddModule / InitiateVideoUpload / PublishCourse: content
+  // authoring, gated the same way across the whole aggregate (ADR-0007's
+  // role table: `content_admin` at `global` scope "create/edit/publish/
+  // unpublish training videos and courses", or `org_admin`). Course has no
+  // `chapterId` of its own (docs/ddd/training-learning.md's Course
+  // aggregate is org-wide), so every `course.manage` resource is always
+  // `scopeType: "global"`.
+  "course.manage",
+  // ApproveCaptions (Key Use Case 4 / ADR-0010's mandatory publish gate):
+  // same `content_admin`/`org_admin` authority as `course.manage`, kept as
+  // its own action rather than folded into it so the audit trail
+  // (`recordAuditEvent`'s `action` field) distinguishes "edited course
+  // metadata" from "signed off on WCAG 2.1 AA caption accuracy" —
+  // compliance-relevant actions get their own line in `admin.audit_log`.
+  "video.captions.approve",
+  // GetPlaybackUrl (ADR-0010: "Playback never uses Cloudflare's public/
+  // default UIDs directly ... runs the can(subject, 'video:play', video)
+  // policy check"): a learner may play a video attached to a Course they
+  // hold an active-or-completed Enrollment in (checked by the use case via
+  // `resource.ownerId === subject.id`, since Course/Module carry no chapter
+  // scope to check against here), OR `content_admin`/`org_admin` may
+  // preview any video regardless of enrollment (caption review, QA).
+  "video.play",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];

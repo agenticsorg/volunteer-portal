@@ -26,7 +26,8 @@ const DECLINABLE_STATUSES = ["pending", "waitlisted"] as const;
  * waitlisted applicant out of consideration without the applicant having to
  * withdraw themself). If `decision === 'accept'`, the applicant must
  * satisfy the parent Opportunity's `prerequisiteCourseIds`
- * (`hasCompletedRequiredTraining` — stubbed `true` this phase) **and**
+ * (`hasCompletedRequiredTraining` — a real cross-context check against
+ * `training`'s completed-Enrollment records as of Phase 4) **and**
  * `Shift.acceptedCount < capacity` — when either is false, the outcome is
  * silently forced to `waitlisted` instead of `accepted` (not an error; this
  * is the documented behavior, not a failure case).
@@ -106,6 +107,7 @@ export async function decideApplication(
   // decision === "accept": the actual outcome depends on prerequisites and
   // live capacity, resolved atomically inside the transaction below.
   const trainingSatisfied = await hasCompletedRequiredTraining(
+    prisma,
     application.applicantPersonId,
     application.shift.opportunity.prerequisiteCourseIds,
   );

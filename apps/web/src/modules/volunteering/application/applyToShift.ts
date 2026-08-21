@@ -28,7 +28,8 @@ const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = "P2002";
  * construction (identity-access.md Person invariant 2 already guarantees
  * every registered Person is 16+ or guardian-consented); `minAge > 16`
  * would need a narrower Identity OHS query this phase does not add. Same
- * "documented stub, not a silent gap" shape as `hasCompletedRequiredTraining`.
+ * "documented gap, not a silent one" discipline `hasCompletedRequiredTraining`
+ * followed while it was still a Phase 3 stub.
  *
  * *Post:* New `Application(status = 'pending')` row exists;
  * `ApplicationSubmitted` emitted.

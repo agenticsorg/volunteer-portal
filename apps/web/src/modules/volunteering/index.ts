@@ -93,10 +93,11 @@ export { queryApprovedHours } from "./application/queryApprovedHours";
 export type { ApprovedHourEntryRecord, QueryApprovedHoursFilters } from "./application/queryApprovedHours";
 
 /**
- * The Training-context prerequisite check, stubbed for this phase — see
- * this function's own doc comment. Exported so a future router/use-case
- * caller (and Phase 4's replacement) has one obvious place to import it
- * from, same as every other cross-cutting check in this module.
+ * The Training-context prerequisite check — a real cross-context read
+ * against `training`'s published `hasCompletedRequiredCourses` query as of
+ * Phase 4 (see this function's own doc comment for the Phase 3 stub it
+ * replaced). Exported so router/use-case callers have one obvious place to
+ * import it from, same as every other cross-cutting check in this module.
  */
 export { hasCompletedRequiredTraining } from "./application/hasCompletedRequiredTraining";
 
