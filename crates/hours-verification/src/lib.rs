@@ -7,6 +7,7 @@ mod events;
 mod hour_entry;
 mod hours;
 mod repository;
+mod verification_letter;
 
 pub use assignment_snapshot::{
     AssignmentSnapshot, AssignmentSnapshotQuery, AssignmentStatus, ParticipationMode,
@@ -16,3 +17,7 @@ pub use events::{HoursAdjusted, HoursApproved, HoursLogged, HoursRejected};
 pub use hour_entry::{Adjustment, HourEntry, HourEntryStatus};
 pub use hours::{DateRange, Hours};
 pub use repository::{HourEntryRepository, HoursTotalsQuery, SqlxHourEntryRepository};
+pub use verification_letter::{
+    ProjectHours, ProjectNameQuery, VerificationLetterDraft, VerificationLetterError,
+    VerificationLetterService,
+};

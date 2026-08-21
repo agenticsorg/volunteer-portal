@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use hours_verification::AssignmentSnapshotQuery;
+use hours_verification::{AssignmentSnapshotQuery, ProjectNameQuery};
 use kernel::ScopedDb;
 use projects_assignments::LeadMembershipQuery;
 
@@ -18,6 +18,12 @@ pub struct AppState {
     /// per-entry `LeadMembershipQuery` re-check (hours-verification.md's
     /// "Other invariants").
     pub assignment_snapshot: Arc<dyn AssignmentSnapshotQuery>,
+    /// `hours-verification`'s read port onto `projects-assignments`'s
+    /// `project.name` column (Prompt 6.1) -- same cross-sibling-crate
+    /// adapter shape as `assignment_snapshot`, used by
+    /// `VerificationLetterService::draft` to label each project in a
+    /// letter's per-project breakdown.
+    pub project_names: Arc<dyn ProjectNameQuery>,
     /// Discord's interactions application public key (hex-encoded),
     /// verified against `X-Signature-Ed25519`/`X-Signature-Timestamp`
     /// before any interaction payload is parsed (Prompt 5.2, ADR-0008).

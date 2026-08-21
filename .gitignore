@@ -20,3 +20,7 @@ ruvector.db
 /target/
 **/target/
 Cargo.lock.bak
+
+# scripts/verapdf/build.sh's downloaded source and built jar (Prompt 6.1) --
+# rebuilt on demand, not checked in.
+scripts/verapdf/src/

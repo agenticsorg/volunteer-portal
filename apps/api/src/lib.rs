@@ -16,10 +16,13 @@ pub mod error;
 pub mod hours;
 pub mod oauth;
 pub mod onboarding;
+pub mod project_name_adapter;
 pub mod projects;
 pub mod routes;
 pub mod session;
 pub mod state;
+pub mod verification_letter;
+pub mod verification_letter_render;
 
 use axum::routing::{get, post};
 use axum::Router;
@@ -80,6 +83,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/volunteers/{volunteer_id}/hours/total",
             get(hours::volunteer_hours_total),
+        )
+        .route(
+            "/volunteers/{volunteer_id}/verification-letter",
+            get(verification_letter::generate_verification_letter),
         )
         .route(
             "/discord/interactions",
