@@ -8,16 +8,22 @@
 
 pub mod account_linking;
 pub mod active_membership_adapter;
+pub mod assignment_recipient_adapter;
 pub mod assignment_snapshot_adapter;
 pub mod auth;
+pub mod discord_dm_adapter;
 pub mod discord_interactions;
 pub mod dto;
+pub mod email_templates;
 pub mod error;
+pub mod hour_entry_recipient_adapter;
 pub mod hours;
 pub mod oauth;
 pub mod onboarding;
+pub mod postmark_email_provider;
 pub mod project_name_adapter;
 pub mod projects;
+pub mod resend_email_provider;
 pub mod routes;
 pub mod session;
 pub mod state;

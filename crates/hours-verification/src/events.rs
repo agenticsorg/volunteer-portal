@@ -1,6 +1,7 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use kernel::{
-    ActorId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent, HourEntryId, VolunteerId,
+    ActorId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent, HourEntryId, OutboxEvent,
+    VolunteerId,
 };
 use uuid::Uuid;
 
@@ -65,6 +66,19 @@ impl DomainEvent for HoursApproved {
     }
     fn as_auditable(&self) -> Option<&dyn AuditableEvent> {
         Some(self)
+    }
+    fn as_outboxable(&self) -> Option<&dyn OutboxEvent> {
+        Some(self)
+    }
+}
+
+/// notifications.md trigger 3 (hours approved) -- same shape as
+/// `AssignmentApproved`'s outbox payload: `approver_id` is the deciding
+/// lead/admin, not the recipient. The dispatcher resolves the actual
+/// volunteer via its own `HourEntryRecipientQuery` port.
+impl OutboxEvent for HoursApproved {
+    fn payload(&self) -> serde_json::Value {
+        serde_json::json!({ "hour_entry_id": self.hour_entry_id, "approver_id": self.approver_id })
     }
 }
 

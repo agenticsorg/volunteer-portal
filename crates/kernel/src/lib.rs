@@ -9,14 +9,17 @@ mod db;
 mod error;
 mod events;
 mod id;
+mod outbox;
 mod skill;
 
 pub use audit::record_audit_events;
 pub use db::ScopedDb;
 pub use error::RepoError;
-pub use events::{ActorId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent};
+pub use events::{ActorId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent, OutboxEvent};
+pub use outbox::{record_outbox_events, OutboxRepository, OutboxRow, SqlxOutboxRepository};
 pub use id::{
     AssignmentId, AssignmentMarker, DataSubjectRequestId, DataSubjectRequestMarker, HourEntryId,
-    HourEntryMarker, Id, ProjectId, ProjectMarker, VolunteerId, VolunteerMarker,
+    HourEntryMarker, Id, NotificationAttemptId, NotificationAttemptMarker, ProjectId, ProjectMarker,
+    VolunteerId, VolunteerMarker,
 };
 pub use skill::{Skill, SkillError};

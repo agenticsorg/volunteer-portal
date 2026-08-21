@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update domain_event_outbox set attempts = attempts + 1 where id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "34a3d37969313c3239e8abb27f0122b62f253f728b226bc577651e4b3064f11d"
+}

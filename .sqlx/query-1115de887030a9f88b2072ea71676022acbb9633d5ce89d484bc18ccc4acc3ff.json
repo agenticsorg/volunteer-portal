@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update domain_event_outbox set processed_at = now() where id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1115de887030a9f88b2072ea71676022acbb9633d5ce89d484bc18ccc4acc3ff"
+}

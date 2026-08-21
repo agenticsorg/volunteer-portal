@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use kernel::{
-    ActorId, AssignmentId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent, ProjectId,
-    VolunteerId,
+    ActorId, AssignmentId, AuditAction, AuditEntityType, AuditableEvent, DomainEvent, OutboxEvent,
+    ProjectId, VolunteerId,
 };
 use uuid::Uuid;
 
@@ -234,6 +234,22 @@ impl DomainEvent for AssignmentApproved {
     }
     fn as_auditable(&self) -> Option<&dyn AuditableEvent> {
         Some(self)
+    }
+    fn as_outboxable(&self) -> Option<&dyn OutboxEvent> {
+        Some(self)
+    }
+}
+
+/// notifications.md trigger 2 (assignment approved) -- payload carries
+/// only `assignment_id`/`decided_by`, not a recipient: this event
+/// doesn't know the assigned volunteer's id at the type level (the
+/// aggregate exposes it, but adding it here would duplicate what the
+/// dispatcher's own `AssignmentRecipientQuery` port already resolves).
+/// `decided_by` is the approving lead/admin, never the notification
+/// recipient -- the dispatcher must not confuse the two.
+impl OutboxEvent for AssignmentApproved {
+    fn payload(&self) -> serde_json::Value {
+        serde_json::json!({ "assignment_id": self.assignment_id, "decided_by": self.decided_by })
     }
 }
 

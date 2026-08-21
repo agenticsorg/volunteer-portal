@@ -23,6 +23,32 @@ pub trait DomainEvent: Send + Sync + 'static {
     fn as_auditable(&self) -> Option<&dyn AuditableEvent> {
         None
     }
+
+    /// Same upcasting shape as `as_auditable`, for `OutboxEvent` (context-
+    /// map.md mechanism "b"). A `DomainEvent` can implement neither,
+    /// either, or both of `AuditableEvent`/`OutboxEvent` — they answer two
+    /// independent questions ("is this a compliance record" vs. "does
+    /// Notifications/Discord Integration react to this"), not a hierarchy.
+    fn as_outboxable(&self) -> Option<&dyn OutboxEvent> {
+        None
+    }
+}
+
+/// A `DomainEvent` that Notifications (or, in a future phase, Discord
+/// Integration's debounce trigger) reacts to. Per context-map.md
+/// mechanism "b", the `apps/api` scoped-transaction helper writes a row
+/// to `domain_event_outbox` for every event implementing this, in the
+/// same transaction as the aggregate save — a background job (a
+/// scheduled Fly.io Machine, not a request-path call) polls that table
+/// later and dispatches. `payload()` is deliberately narrow: it carries
+/// only what a *dispatcher*, not the aggregate itself, needs to decide
+/// what to send (see `notifications.md`'s "Mapping the 5 triggers to
+/// their event source" for why e.g. `AssignmentApproved`'s payload
+/// carries `assignment_id` rather than a resolved recipient — resolving
+/// "who gets notified" is the dispatcher's job, via its own read ports,
+/// not the emitting aggregate's).
+pub trait OutboxEvent: DomainEvent {
+    fn payload(&self) -> serde_json::Value;
 }
 
 /// A `DomainEvent` that is also a compliance record. Per ADR-0005 and

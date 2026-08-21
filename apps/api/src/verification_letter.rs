@@ -7,7 +7,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
-use chrono::NaiveDate;
+use chrono::{NaiveDate, Utc};
 use hours_verification::{
     DateRange, SqlxHourEntryRepository, VerificationLetterError, VerificationLetterService,
 };
@@ -27,12 +27,54 @@ pub struct VerificationLetterQuery {
     pub end: NaiveDate,
 }
 
+/// notifications.md trigger 5: the one event that breaks the "domain
+/// event from an aggregate's repository save" pattern. There is no
+/// `VerificationLetter` aggregate to hand back
+/// `Vec<Box<dyn DomainEvent>>` from `save()` (hours-verification.md's
+/// "Verification letters: a process, not a stored entity" -- there is
+/// no `save()` at all), so this writes directly to
+/// `domain_event_outbox`, in its own small transaction, immediately
+/// after a successful render -- not via `kernel::record_outbox_events`,
+/// which only ever runs against a repository's returned events. Carries
+/// no state worth auditing beyond what `HoursApproved`/`HoursAdjusted`
+/// already captured, so this is a plain outbox write, not an
+/// `AuditableEvent` (contrast with every other outbox-sourced trigger).
+async fn write_verification_letter_generated_event(
+    state: &AppState,
+    volunteer_id: VolunteerId,
+    range: DateRange,
+) -> Result<(), ApiError> {
+    let mut tx = state
+        .db
+        .begin_scoped(volunteer_id.as_uuid())
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    let payload = serde_json::json!({
+        "volunteer_id": volunteer_id,
+        "range_start": range.start.to_string(),
+        "range_end": range.end.to_string(),
+    });
+    sqlx::query!(
+        r#"insert into domain_event_outbox (event_type, payload, occurred_at)
+           values ('verification_letter_ready', $1, $2)"#,
+        payload,
+        Utc::now(),
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| ApiError::Internal)?;
+    tx.commit().await.map_err(|_| ApiError::Internal)?;
+    Ok(())
+}
+
 /// Streams the generated PDF bytes directly in the HTTP response --
 /// never written to disk or object storage (ADR-0009's "rendered on
-/// demand ... never stored"). A GET, deliberately: this is a read over
-/// already-approved data, so it produces no domain event and no
-/// `audit_log` row -- generating a letter twice from the same underlying
-/// hours is a provably side-effect-free operation.
+/// demand ... never stored"). A GET, but not fully side-effect-free as
+/// of Prompt 7.1: it writes one `domain_event_outbox` row (trigger 5,
+/// above) so Notifications can send a "your letter is ready" email --
+/// `hour_entry`/`audit_log` remain untouched either way, which is what
+/// "the letter itself is never persisted" actually means (see
+/// `apps/api/tests/verification_letter.rs`'s side-effect assertions).
 pub async fn generate_verification_letter(
     AuthUser(caller_id): AuthUser,
     State(state): State<AppState>,
@@ -87,6 +129,8 @@ pub async fn generate_verification_letter(
     tx.commit().await.map_err(|_| ApiError::Internal)?;
 
     let pdf_bytes = render_verification_letter_pdf(&draft).map_err(|_| ApiError::Internal)?;
+
+    write_verification_letter_generated_event(&state, volunteer_id, range).await?;
 
     Ok((
         StatusCode::OK,
