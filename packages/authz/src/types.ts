@@ -141,6 +141,15 @@ export const ACTIONS = [
   // scope to check against here), OR `content_admin`/`org_admin` may
   // preview any video regardless of enrollment (caption review, QA).
   "video.play",
+  // --- gamification (docs/ddd/gamification.md) ---
+  // AdminAdjustPoints (Key Use Case 9) / AdminAwardBadge: both "staff-only
+  // escape hatch" mutations with no chapter/team scope of their own (a
+  // points/badge correction can target any person regardless of chapter),
+  // so both resolve to a `scopeType: "global"` resource — same shape as
+  // `course.manage`. Kept as two actions, not one, for the same audit-trail
+  // granularity reason `video.captions.approve` is split from `course.manage`.
+  "points.adjust",
+  "badge.award",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];

@@ -986,3 +986,261 @@ model AuditLog {
   @@map("audit_log")
   @@schema("admin")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5 — Gamification: schema only (points ledger, badges, streaks,
+// scoped leaderboard projection)
+// ---------------------------------------------------------------------------
+//
+// The PointsLedgerEntry, PointsBalance, Badge, BadgeAward, Streak, and
+// LeaderboardSnapshot shapes from docs/ddd/gamification.md, matching that
+// doc's own Schema Sketch field-for-field. `gamification.domain_events`
+// (`GamificationDomainEvent`, above) already exists from Phase 1; this
+// phase adds the aggregate/projection tables plus the inbound-event
+// idempotency ledger. No use cases, no event consumers, no API in this
+// migration — those are a later stage; this migration is data model only.
+//
+// `person_id` on every table below (`PointsLedgerEntry`, `PointsBalance`,
+// `BadgeAward`, `Streak`, `LeaderboardSnapshot`) is an intentional soft
+// reference (plain column, no relation, no FK) to `identity.persons.id` —
+// cross-schema, so no FK is possible or wanted, per the Schema Sketch's own
+// comments and ADR-0001. `BadgeAward.badgeId` IS a real FK (`ON DELETE
+// RESTRICT`) because `Badge` and `BadgeAward` are both owned by this same
+// `gamification` schema — the no-cross-schema-FK rule applies only at
+// bounded-context boundaries, not within one.
+//
+// `LeaderboardSnapshot.scopeId` is a soft reference to `community.team.id`
+// or `community.challenge.id` (not yet built) — same reasoning, and see
+// the Leaderboard invariant note below. `scope_type` is backed by a
+// two-value Postgres enum (`gamification.leaderboard_scope_type`) whose
+// only members are `team` and `challenge` — per docs/ddd/gamification.md's
+// explicit, load-bearing invariant, "'global' intentionally does not
+// exist" is not a comment on unused DDL, it is the enforcement mechanism:
+// no migration, application code path, or future config toggle can ever
+// produce an unscoped/platform-wide leaderboard row, because the type
+// itself has no value that could mean "global." This is the schema-level
+// half of the product constraint (leaderboards must never be global for
+// this high-intrinsic-motivation population); the API-layer half (rejecting
+// any request that omits a scope) is a later stage's job.
+//
+// Several constructs in the Schema Sketch have no Prisma-schema-language
+// equivalent and are hand-authored in the migration SQL instead — same
+// precedent as every hand-authored addition already in this file's earlier
+// phases:
+//   - `points_ledger_no_update` / `points_ledger_no_delete`, the two
+//     `CREATE RULE ... DO INSTEAD NOTHING` statements the Schema Sketch
+//     itself specifies verbatim for `points_ledger_entry` (PointsLedgerEntry
+//     invariant 1: "no application code path performs UPDATE or DELETE on
+//     this table; enforced defensively with a Postgres rule/trigger").
+//     Deliberately a RULE that silently no-ops, not a trigger that raises
+//     (contrast `admin.audit_log`'s insert-only trigger, which does raise) —
+//     matching the Schema Sketch's own literal SQL rather than reusing the
+//     audit-log pattern, since the DDD doc specifies this exact mechanism
+//     for this table. Postgres RULEs have no Prisma-schema-language
+//     equivalent at all (unlike triggers, which at least have precedent
+//     elsewhere in this file as hand-authored SQL), so this is pure
+//     hand-authored DDL.
+//
+// `gamification.processed_events` (`GamificationProcessedEvent` below) is
+// deliberately keyed `(source_event_id, event_type)` — no `consumer`
+// column — matching docs/ddd/gamification.md's Schema Sketch and its
+// Integration & Anti-Corruption Notes worked example exactly
+// ("INSERT INTO gamification.processed_events (source_event_id,
+// event_type) VALUES (...)"). This is a deliberate, intentional divergence
+// from `packages/outbox`'s generic `processed-events.template.sql`
+// (`(consumer, event_id)`, built for a table that may be drained by
+// several independent consumers): `gamification.ConsumeInboundEvent` is
+// this context's single logical entry point for every subscribed event
+// type across both source schemas (`volunteering.domain_events` and
+// `training.domain_events`), not several independent consumers draining
+// the same table, so a `consumer` column would add a dimension this
+// context doesn't have — and `event_type` already disambiguates across
+// source contexts because `HoursApproved`, `ModuleCompleted`, and
+// `CourseCompleted` are globally distinct event-type strings. A later
+// stage building the actual event consumers may therefore need to write
+// its own idempotency-check helper (mirroring `packages/outbox`'s
+// `handleIdempotently` shape from ADR-0009's Implementation Notes) rather
+// than calling `drainOutbox()` unmodified, since that helper's `INSERT ...
+// (consumer, event_id) ... ON CONFLICT (consumer, event_id)` is hard-coded
+// to the other shape — confirmed by reading `packages/outbox/src/drainOutbox.ts`
+// directly, not assumed.
+
+enum GamificationStreakStatus {
+  active
+  frozen
+  broken
+
+  @@map("streak_status")
+  @@schema("gamification")
+}
+
+// 'global' intentionally has no representable value — see the header
+// comment above and docs/ddd/gamification.md's Leaderboard invariant.
+enum GamificationLeaderboardScopeType {
+  team
+  challenge
+
+  @@map("leaderboard_scope_type")
+  @@schema("gamification")
+}
+
+// Append-only aggregate root (docs/ddd/gamification.md "PointsLedgerEntry"):
+// every point change, award or correction, is a new row — there is no
+// UPDATE path anywhere in the application. `points` is signed; a negative
+// row is a compensating correction, never a mutation of a prior row.
+// Invariant 2 (exactly one entry per `(sourceEventType, sourceEventId)`) is
+// the concrete mechanism behind idempotent event consumption at the
+// `PointsLedgerEntry` level — a second, independent backstop below
+// `gamification.processed_events`. Invariant 1 (immutability) is enforced
+// defensively at the database level too, via the two hand-authored
+// `CREATE RULE` statements in this migration's SQL — see the header
+// comment above.
+model PointsLedgerEntry {
+  id              String   @id
+  personId        String   @map("person_id")
+  points          Int
+  sourceEventType String   @map("source_event_type")
+  sourceEventId   String   @map("source_event_id")
+  reason          String?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([sourceEventType, sourceEventId])
+  @@index([personId, createdAt(sort: Desc)], map: "idx_points_ledger_person")
+  @@map("points_ledger_entry")
+  @@schema("gamification")
+}
+
+// Materialized projection (docs/ddd/gamification.md "PointsBalance"), NOT
+// an aggregate root and NOT a second source of truth — always re-derivable
+// as `SUM(points) GROUP BY person_id` over `PointsLedgerEntry`. Refreshed
+// incrementally in the same transaction as each new ledger write; also
+// fully rebuildable from the ledger by a maintenance job. Unlike the
+// ledger, ordinary UPDATE is expected and correct here — this table is a
+// cache, not the append-only fact log.
+model PointsBalance {
+  personId          String   @id @map("person_id")
+  totalPoints       BigInt   @default(0) @map("total_points")
+  lastLedgerEntryId String?  @map("last_ledger_entry_id")
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("points_balance")
+  @@schema("gamification")
+}
+
+// Aggregate root, achievement definition (docs/ddd/gamification.md
+// "Badge"). `criteria` is structured JSON interpreted by the
+// `EvaluateBadgeCriteria` application service, never by the database.
+// `active = false` retires a badge from being newly awardable but — per
+// this context's second hard rule (badges are permanent, shareable
+// artifacts) — existing `BadgeAward` rows referencing it are never removed
+// or hidden; a badge already earned stays visible on a person's profile
+// even after its own definition is later deactivated.
+model Badge {
+  id          String   @id
+  slug        String   @unique
+  name        String
+  description String   @default("")
+  iconUrl     String?  @map("icon_url")
+  criteria    Json
+  isPublic    Boolean  @default(true) @map("is_public")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  badgeAwards BadgeAward[]
+
+  @@map("badge")
+  @@schema("gamification")
+}
+
+// Aggregate root (docs/ddd/gamification.md "BadgeAward"): the fact one
+// specific Person earned one specific Badge, once. The unique constraint
+// below is the whole idempotency mechanism for `AwardBadge`
+// (`ON CONFLICT (person_id, badge_id) DO NOTHING` at the application
+// layer) — re-processing the same qualifying event a second time is a
+// no-op, not a duplicate award. `badgeId` is a real, same-schema FK
+// (`ON DELETE RESTRICT` — a Badge definition can never be deleted out from
+// under an existing award; retire it via `active = false` instead).
+model BadgeAward {
+  id            String   @id
+  personId      String   @map("person_id")
+  badgeId       String   @map("badge_id")
+  sourceEventId String?  @map("source_event_id")
+  awardedAt     DateTime @default(now()) @map("awarded_at") @db.Timestamptz(6)
+
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Restrict)
+
+  @@unique([personId, badgeId])
+  @@index([personId], map: "idx_badge_award_person")
+  @@map("badge_award")
+  @@schema("gamification")
+}
+
+// Aggregate root (docs/ddd/gamification.md "Streak"): a per-person,
+// per-activity-type running count of consecutive active periods, with a
+// forgiveness/grace mechanic (`freezesAvailable`/`freezesUsedTotal`) —
+// deliberately not a pure punish-on-any-miss streak, per the research
+// finding cited in that doc. `activityType` is plain text with an
+// app-level allow-list (e.g. `training_cadence`, `shift_cadence`), not a
+// Postgres enum, since new streak types are expected without a schema
+// migration. `lastActivityDate` is a DATE, not a timestamp — cadence is
+// period-granular, matching the Schema Sketch exactly.
+model Streak {
+  id               String                   @id
+  personId         String                   @map("person_id")
+  activityType     String                   @map("activity_type")
+  currentLength    Int                      @default(0) @map("current_length")
+  longestLength    Int                      @default(0) @map("longest_length")
+  lastActivityDate DateTime?                @map("last_activity_date") @db.Date
+  freezesAvailable Int                      @default(2) @map("freezes_available") @db.SmallInt
+  freezesUsedTotal Int                      @default(0) @map("freezes_used_total")
+  status           GamificationStreakStatus @default(active)
+  updatedAt        DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([personId, activityType])
+  @@map("streak")
+  @@schema("gamification")
+}
+
+// Read-model / projection (docs/ddd/gamification.md "Leaderboard"), NOT a
+// transactionally-written aggregate — rebuilt from `PointsLedgerEntry` rows
+// filtered by `LeaderboardScope` and time window by `RebuildLeaderboardSnapshot`,
+// never from this table itself (a cache of a cache would be a bug, per that
+// use case's own doc comment). `scopeType` + `scopeId` together are the
+// `LeaderboardScope` value object, and `scopeType`'s enum has no "global"
+// member — see the header comment above for why that is a hard invariant,
+// not a convention.
+model LeaderboardSnapshot {
+  id          String                            @id
+  scopeType   GamificationLeaderboardScopeType  @map("scope_type")
+  scopeId     String                            @map("scope_id")
+  personId    String                            @map("person_id")
+  rank        Int
+  points      BigInt
+  periodStart DateTime                          @map("period_start") @db.Timestamptz(6)
+  periodEnd   DateTime                          @map("period_end") @db.Timestamptz(6)
+  computedAt  DateTime                          @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  @@unique([scopeType, scopeId, personId, periodStart])
+  @@index([scopeType, scopeId, periodStart, rank], map: "idx_leaderboard_scope_rank")
+  @@map("leaderboard_snapshot")
+  @@schema("gamification")
+}
+
+// Idempotent inbound-event consumption ledger (ADR-0009; docs/ddd/gamification.md
+// "Processed Event" / Integration & Anti-Corruption Notes). Keyed by
+// `(sourceEventId, eventType)`, NOT `(consumer, event_id)` — see the header
+// comment above for why this deliberately diverges from
+// `packages/outbox`'s generic template. A later stage's
+// `ConsumeInboundEvent` handler attempts an insert here inside the same
+// transaction as any resulting `PointsLedgerEntry`/`BadgeAward`/`Streak`
+// writes; a primary-key conflict means the event was already processed and
+// the transaction no-ops.
+model GamificationProcessedEvent {
+  sourceEventId String   @map("source_event_id")
+  eventType     String   @map("event_type")
+  processedAt   DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@id([sourceEventId, eventType])
+  @@map("processed_events")
+  @@schema("gamification")
+}
