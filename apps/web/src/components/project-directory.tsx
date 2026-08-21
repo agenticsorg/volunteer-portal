@@ -6,7 +6,12 @@ import { useId, useState } from "react";
 import type { ApplyToProjectRequest } from "@/generated/ApplyToProjectRequest";
 import type { ProjectSummaryDto } from "@/generated/ProjectSummary";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+// Relative by default so requests proxy through Next's own server
+// (next.config.ts's rewrites()), avoiding both Private Network Access
+// blocks and cross-origin cookie issues in dev. Set
+// NEXT_PUBLIC_API_BASE_URL to a real absolute URL only for a deployment
+// where the frontend calls the api crate directly cross-origin.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
 type SearchStatus = "idle" | "loading" | "error" | "done";
 
