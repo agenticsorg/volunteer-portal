@@ -5,6 +5,8 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { newId } from "@volunteer-portal/ulid";
 import { recordAuditEvent } from "@volunteer-portal/audit";
+import { takeModerationAction } from "@/modules/moderation";
+import { createPerson, grantRoleDirect } from "./helpers/identityFixtures";
 
 // Real end-to-end verification of the Phase 1 event backbone: this test
 // does NOT call apps/worker's drain logic in-process or re-implement its
@@ -168,5 +170,55 @@ describe("audit_log_writer (real worker process, end-to-end)", () => {
       await prisma.trainingDomainEvent.deleteMany({ where: { aggregateId } });
     },
     15_000,
+  );
+
+  it(
+    "drains a real Moderation privileged mutation's audit event into admin.audit_log (Phase 7 completion bar)",
+    async () => {
+      // Real `moderation` domain code, not a raw `recordAuditEvent()` call —
+      // proves the actual `takeModerationAction` use case's own audit write
+      // (docs/plans/implementation-plan.md, Phase 7: "admin.audit_log
+      // receives a summarized entry for every moderation action") reaches
+      // `admin.audit_log` through the real worker, exactly as
+      // `auditLogWriter`'s own header frames "the missing link" this suite
+      // exists to close — here, for a second producer schema (`moderation`),
+      // not just `training`.
+      const admin = await createPerson(prisma, { displayName: "Audit Drain Org Admin" });
+      await grantRoleDirect(prisma, { subjectId: admin.id, role: "org_admin", grantedBy: admin.id });
+      const target = await createPerson(prisma, { displayName: "Audit Drain Target" });
+
+      const taken = await takeModerationAction(prisma, {
+        caller: { id: admin.id, status: "active" },
+        targetPersonId: target.id,
+        actionType: "warn",
+        reason: "e2e audit drain proof.",
+        scopeType: "org",
+        scopeId: null,
+      });
+
+      const [sourceEvent] = await prisma.moderationDomainEvent.findMany({
+        where: { aggregateType: "moderation_action", aggregateId: taken.actionId, eventType: "audit.recorded" },
+      });
+      expect(sourceEvent).toBeDefined();
+
+      const auditRow = await pollUntil(async () => {
+        const rows = await prisma.auditLog.findMany({ where: { id: sourceEvent.id } });
+        return rows[0];
+      }, DRAIN_TIMEOUT_MS);
+
+      expect(auditRow.action).toBe("moderation.action_taken.warn");
+      expect(auditRow.resourceType).toBe("moderation_action");
+      expect(auditRow.resourceId).toBe(taken.actionId);
+      expect(auditRow.actorId).toBe(admin.id);
+
+      const drainedSource = await prisma.moderationDomainEvent.findUnique({ where: { id: sourceEvent.id } });
+      expect(drainedSource?.processedAt).not.toBeNull();
+
+      await prisma.moderationDomainEvent.deleteMany({ where: { aggregateId: taken.actionId } });
+      await prisma.moderationAction.deleteMany({ where: { id: taken.actionId } });
+      await prisma.roleAssignment.deleteMany({ where: { subjectId: { in: [admin.id, target.id] } } });
+      await prisma.person.deleteMany({ where: { id: { in: [admin.id, target.id] } } });
+    },
+    DRAIN_TIMEOUT_MS + 5_000,
   );
 });

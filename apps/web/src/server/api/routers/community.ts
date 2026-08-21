@@ -56,6 +56,7 @@ import {
   joinTeam,
   requestMentorship,
   acceptMentorship,
+  ActiveModerationSanctionError,
   ForbiddenActionError,
   PersonNotFoundError,
   PostNotFoundError,
@@ -106,7 +107,12 @@ const scopePairSchema = z
  * Centralized here, same shape as every other router's own `map*Error`.
  */
 function mapCommunityError(error: unknown): never {
-  if (error instanceof ForbiddenActionError || error instanceof ScopeInvariantViolationError || error instanceof NotTheMentorError) {
+  if (
+    error instanceof ForbiddenActionError ||
+    error instanceof ScopeInvariantViolationError ||
+    error instanceof NotTheMentorError ||
+    error instanceof ActiveModerationSanctionError
+  ) {
     throw new TRPCError({ code: "FORBIDDEN", message: error.message });
   }
   if (

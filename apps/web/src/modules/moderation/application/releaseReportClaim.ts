@@ -3,6 +3,7 @@ import { recordAuditEvent } from "@volunteer-portal/audit";
 import { can, type PolicySubject } from "@volunteer-portal/authz";
 import { listActiveRoleAssignments } from "@/modules/identity";
 import { InvalidReportStatusTransitionError, NotClaimHolderError, ReportNotFoundError } from "../domain/errors";
+import { isLegalReportStatusTransition } from "../domain/reportStateMachine";
 
 export interface ReleaseReportClaimInput {
   caller: PolicySubject;
@@ -27,7 +28,7 @@ export async function releaseReportClaim(
   if (!report) {
     throw new ReportNotFoundError(input.reportId);
   }
-  if (report.status !== "reviewing") {
+  if (!isLegalReportStatusTransition(report.status, "open")) {
     throw new InvalidReportStatusTransitionError(report.status, "open");
   }
 

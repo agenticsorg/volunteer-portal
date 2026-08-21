@@ -3,6 +3,7 @@ import { recordAuditEvent } from "@volunteer-portal/audit";
 import { can, type PolicySubject } from "@volunteer-portal/authz";
 import { listActiveRoleAssignments } from "@/modules/identity";
 import { InvalidReportStatusTransitionError, OutOfScopeError, ReportNotFoundError } from "../domain/errors";
+import { isLegalReportStatusTransition } from "../domain/reportStateMachine";
 
 export interface ClaimReportInput {
   caller: PolicySubject;
@@ -25,7 +26,7 @@ export async function claimReport(prisma: PrismaClient, input: ClaimReportInput)
   if (!report) {
     throw new ReportNotFoundError(input.reportId);
   }
-  if (report.status !== "open") {
+  if (!isLegalReportStatusTransition(report.status, "reviewing")) {
     throw new InvalidReportStatusTransitionError(report.status, "reviewing");
   }
 

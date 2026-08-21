@@ -8,6 +8,7 @@ import {
   OutOfScopeError,
   ReportNotFoundError,
 } from "../domain/errors";
+import { isLegalReportStatusTransition } from "../domain/reportStateMachine";
 import { publishModerationEvent } from "./publishModerationEvent";
 
 export interface DismissReportInput {
@@ -41,7 +42,7 @@ export async function dismissReport(prisma: PrismaClient, input: DismissReportIn
   if (!report) {
     throw new ReportNotFoundError(input.reportId);
   }
-  if (report.status !== "open" && report.status !== "reviewing") {
+  if (!isLegalReportStatusTransition(report.status, "dismissed")) {
     throw new InvalidReportStatusTransitionError(report.status, "dismissed");
   }
 

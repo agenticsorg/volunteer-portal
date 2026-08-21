@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { newId } from "@volunteer-portal/ulid";
 import { communityRouter } from "@/server/api/routers/community";
 import { createCallerFactory } from "@/server/api/trpc";
+import { takeModerationAction } from "@/modules/moderation";
 import { createPerson, createChapterDirect, grantRoleDirect, contextFor } from "./helpers/identityFixtures";
 
 // Exercises the community tRPC router (docs/ddd/community-social.md's API
@@ -47,6 +48,8 @@ describe("communityRouter (integration)", () => {
     await prisma.team.deleteMany({});
     await prisma.mentorship.deleteMany({});
     await prisma.post.deleteMany({});
+    await prisma.moderationDomainEvent.deleteMany({});
+    await prisma.moderationAction.deleteMany({ where: { targetPersonId: { in: personIds } } });
     await prisma.roleAssignment.deleteMany({ where: { subjectId: { in: personIds } } });
     await prisma.person.deleteMany({ where: { id: { in: personIds } } });
     await prisma.chapter.deleteMany({ where: { id: { in: chapterIds } } });
@@ -156,6 +159,38 @@ describe("communityRouter (integration)", () => {
 
       const received = await callerFor(recipient).getKudosReceived({ personId: recipient.id });
       expect(received.some((k) => k.kudosId === given.kudosId)).toBe(true);
+    });
+  });
+
+  describe("Phase 7 enforcement — an active Moderation suspend/ban maps to FORBIDDEN through this router", () => {
+    it("createPost and giveKudos both reject with FORBIDDEN once moderation.takeModerationAction issues an org-wide suspend", async () => {
+      const chapterA = await chapter("Router Enforcement Chapter");
+      const admin = await orgAdmin();
+      const suspended = await person({ primaryChapterId: chapterA.id });
+      const recipient = await person();
+
+      await takeModerationAction(prisma, {
+        caller: { id: admin.id, status: "active" },
+        targetPersonId: suspended.id,
+        actionType: "suspend",
+        reason: "Router-level enforcement regression test.",
+        scopeType: "org",
+        scopeId: null,
+        endsAt: null,
+      });
+
+      await expect(
+        callerFor(suspended).createPost({
+          body: "Should be blocked by the active suspend.",
+          scopeType: "chapter",
+          scopeId: chapterA.id,
+          attachments: [],
+        }),
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+      await expect(callerFor(suspended).giveKudos({ toPersonId: recipient.id })).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
     });
   });
 

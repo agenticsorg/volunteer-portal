@@ -94,6 +94,14 @@ export type { ReportedEntityType } from "./domain/reportedEntityTypes";
 export { REPORT_REASONS } from "./domain/reportedEntityTypes";
 export type { ReportReason } from "./domain/reportedEntityTypes";
 
+// --- Pure domain logic (state machine, scope-rule enforcement) ---
+export { isLegalReportStatusTransition } from "./domain/reportStateMachine";
+export {
+  assertBanIsAlwaysOrgScoped,
+  assertValidModerationActionDuration,
+  assertValidModerationActionScope,
+} from "./domain/moderationActionRules";
+
 // --- Infra (R2 evidence-attachment adapter boundary) ---
 export { initiateEvidenceUpload } from "./application/initiateEvidenceUpload";
 export type { InitiateEvidenceUploadInput, InitiatedEvidenceUpload } from "./application/initiateEvidenceUpload";

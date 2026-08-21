@@ -3,6 +3,7 @@ import { recordAuditEvent } from "@volunteer-portal/audit";
 import { can, type PolicySubject } from "@volunteer-portal/authz";
 import { listActiveRoleAssignments } from "@/modules/identity";
 import { InvalidReportStatusTransitionError, NotClaimHolderError, ReportNotFoundError } from "../domain/errors";
+import { isLegalReportStatusTransition } from "../domain/reportStateMachine";
 import { publishModerationEvent } from "./publishModerationEvent";
 
 export interface ResolveReportInput {
@@ -29,7 +30,7 @@ export async function resolveReport(prisma: PrismaClient, input: ResolveReportIn
   if (!report) {
     throw new ReportNotFoundError(input.reportId);
   }
-  if (report.status !== "reviewing") {
+  if (!isLegalReportStatusTransition(report.status, "resolved")) {
     throw new InvalidReportStatusTransitionError(report.status, "resolved");
   }
 

@@ -3,16 +3,16 @@ import { newId } from "@volunteer-portal/ulid";
 import { recordAuditEvent } from "@volunteer-portal/audit";
 import { can, type PolicySubject } from "@volunteer-portal/authz";
 import { getPersonSummary, listActiveRoleAssignments } from "@/modules/identity";
+import { OutOfScopeError, PersonNotFoundError } from "../domain/errors";
 import {
-  BanMustBeOrgScopedError,
-  InvalidDurationForActionTypeError,
-  InvalidScopeError,
-  OutOfScopeError,
-  PersonNotFoundError,
-} from "../domain/errors";
+  assertBanIsAlwaysOrgScoped,
+  assertValidModerationActionDuration,
+  assertValidModerationActionScope,
+  type ModerationActionType,
+} from "../domain/moderationActionRules";
 import { publishModerationEvent } from "./publishModerationEvent";
 
-export type ModerationActionType = "warn" | "mute" | "suspend" | "ban";
+export type { ModerationActionType };
 
 export interface TakeModerationActionInput {
   caller: PolicySubject;
@@ -36,39 +36,6 @@ export interface TakenModerationAction {
   actionId: string;
 }
 
-function assertValidScope(scopeType: "org" | "chapter", scopeId: string | null): void {
-  const scopeIdRequired = scopeType === "chapter";
-  if (scopeIdRequired !== (scopeId !== null)) {
-    throw new InvalidScopeError(
-      scopeIdRequired
-        ? "A chapter-scoped moderation action must carry a scopeId."
-        : "An org-scoped moderation action must not carry a scopeId.",
-    );
-  }
-}
-
-function assertValidDuration(actionType: ModerationActionType, endsAt: string | null | undefined): void {
-  if (actionType === "warn" || actionType === "ban") {
-    if (endsAt !== undefined && endsAt !== null) {
-      throw new InvalidDurationForActionTypeError(`A "${actionType}" must not carry an endsAt (it is never time-boxed).`);
-    }
-    return;
-  }
-  // mute / suspend
-  if (endsAt === undefined) {
-    throw new InvalidDurationForActionTypeError(
-      `A "${actionType}" requires endsAt to be explicitly set — a future timestamp for a bounded sanction, or ` +
-        "null for an indefinite one pending manual review. It cannot be omitted.",
-    );
-  }
-  if (endsAt !== null) {
-    const parsed = new Date(endsAt);
-    if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
-      throw new InvalidDurationForActionTypeError(`A "${actionType}"'s endsAt must be a future timestamp, or null.`);
-    }
-  }
-}
-
 /**
  * TakeModerationAction (docs/ddd/moderation-trust-safety.md, Key Use Case
  * 4). Validates the acting moderator's scope authority
@@ -90,11 +57,9 @@ export async function takeModerationAction(
   prisma: PrismaClient,
   input: TakeModerationActionInput,
 ): Promise<TakenModerationAction> {
-  assertValidScope(input.scopeType, input.scopeId);
-  if (input.actionType === "ban" && input.scopeType !== "org") {
-    throw new BanMustBeOrgScopedError();
-  }
-  assertValidDuration(input.actionType, input.endsAt);
+  assertValidModerationActionScope(input.scopeType, input.scopeId);
+  assertBanIsAlwaysOrgScoped(input.actionType, input.scopeType);
+  assertValidModerationActionDuration(input.actionType, input.endsAt);
 
   const target = await getPersonSummary(prisma, input.targetPersonId);
   if (!target) {
