@@ -32,19 +32,31 @@ export function SiteHeader() {
             Volunteer Portal
           </span>
         </Link>
-        <ul className="flex items-center gap-6 sm:gap-8">
-          {NAV_LINKS.map((link) => (
-            <li key={link.href}>
-              <Link
-                href={link.href}
-                className="group relative py-1 font-mono text-sm font-bold text-foreground transition-colors duration-200 hover:text-primary"
-              >
-                {link.label}
-                <span className="absolute -bottom-0.5 left-0 h-0.5 w-0 bg-primary transition-all duration-300 group-hover:w-full" />
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="flex items-center gap-6 sm:gap-8">
+          <ul className="flex items-center gap-6 sm:gap-8">
+            {NAV_LINKS.map((link) => (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className="group relative py-1 font-mono text-sm font-bold text-foreground transition-colors duration-200 hover:text-primary"
+                >
+                  {link.label}
+                  <span className="absolute -bottom-0.5 left-0 h-0.5 w-0 bg-primary transition-all duration-300 group-hover:w-full" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {/* Plain <a>, not next/link: this is a real top-level
+              navigation to the backend's OAuth kickoff route
+              (/auth/google/login), which itself 302s to Google's
+              consent screen -- not a client-side app route. */}
+          <a
+            href="/auth/google/login"
+            className="rounded-full bg-primary px-4 py-1.5 font-mono text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            Sign in with Google
+          </a>
+        </div>
       </nav>
     </header>
   );

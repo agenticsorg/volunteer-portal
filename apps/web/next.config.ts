@@ -27,6 +27,16 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         destination: `${API_PROXY_TARGET}/:path*`,
       },
+      // OAuth login/callback (/auth/discord/*, /auth/google/*) is a
+      // top-level browser navigation, not a fetch -- but it must still
+      // land on this same proxied origin, not the api crate's own
+      // origin directly, or the session cookie the callback sets would
+      // be scoped to a different origin than the one component fetches
+      // (routed through /api/* above) actually read cookies from.
+      {
+        source: "/auth/:path*",
+        destination: `${API_PROXY_TARGET}/auth/:path*`,
+      },
     ];
   },
 };
