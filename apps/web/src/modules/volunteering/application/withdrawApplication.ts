@@ -85,7 +85,7 @@ export async function withdrawApplication(prisma: PrismaClient, input: WithdrawA
       const earliestWaitlisted = await tx.application.findFirst({
         where: { shiftId: application.shiftId, status: "waitlisted" },
         orderBy: { appliedAt: "asc" },
-        select: { id: true, shiftId: true, applicantPersonId: true },
+        select: { id: true, shiftId: true, applicantPersonId: true, shift: { select: { opportunityId: true } } },
       });
 
       if (earliestWaitlisted) {
@@ -122,6 +122,7 @@ export async function withdrawApplication(prisma: PrismaClient, input: WithdrawA
               payload: {
                 applicationId: earliestWaitlisted.id,
                 shiftId: earliestWaitlisted.shiftId,
+                opportunityId: earliestWaitlisted.shift.opportunityId,
                 applicantPersonId: earliestWaitlisted.applicantPersonId,
                 decidedAt: promotedAt.toISOString(),
               } satisfies Prisma.InputJsonValue,

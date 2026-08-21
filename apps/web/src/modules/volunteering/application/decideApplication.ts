@@ -8,14 +8,24 @@ import { hasCompletedRequiredTraining } from "./hasCompletedRequiredTraining";
 
 export type ApplicationDecision = "accept" | "decline" | "waitlist";
 
+/** Statuses `decline` may act on — the state-machine diagram in the doc
+ * draws both `pending --decline--> declined` and `waitlisted --decline-->
+ * declined`; `accept`/`waitlist` remain `pending`-only (the diagram shows
+ * no other arc feeding either). */
+const DECLINABLE_STATUSES = ["pending", "waitlisted"] as const;
+
 /**
  * DecideApplication (docs/ddd/volunteering-opportunities.md, Key Use Case 5).
  *
- * *Pre:* Application is `pending`; caller is authorized to decide
- * applications for this Opportunity (`application.decide` — `chapter_lead`/
- * `mentor` scoped to the Opportunity's chapter, or `org_admin`); if
- * `decision === 'accept'`, the applicant must satisfy the parent
- * Opportunity's `prerequisiteCourseIds`
+ * *Pre:* caller is authorized to decide applications for this Opportunity
+ * (`application.decide` — `chapter_lead`/`mentor` scoped to the
+ * Opportunity's chapter, or `org_admin`); for `decision === 'accept'` or
+ * `'waitlist'`, the Application must be `pending`; for `decision ===
+ * 'decline'`, the Application must be `pending` or `waitlisted` (the state
+ * diagram's `waitlisted --decline--> declined` arc — an approver can pull a
+ * waitlisted applicant out of consideration without the applicant having to
+ * withdraw themself). If `decision === 'accept'`, the applicant must
+ * satisfy the parent Opportunity's `prerequisiteCourseIds`
  * (`hasCompletedRequiredTraining` — stubbed `true` this phase) **and**
  * `Shift.acceptedCount < capacity` — when either is false, the outcome is
  * silently forced to `waitlisted` instead of `accepted` (not an error; this
@@ -74,14 +84,19 @@ export async function decideApplication(
     application.shift.opportunity.chapterId,
   );
 
-  if (application.status !== "pending") {
+  if (input.decision === "decline") {
+    if (!DECLINABLE_STATUSES.includes(application.status as (typeof DECLINABLE_STATUSES)[number])) {
+      throw new ApplicationNotPendingError(application.id, application.status);
+    }
+  } else if (application.status !== "pending") {
     throw new ApplicationNotPendingError(application.id, application.status);
   }
 
   const decidedAt = new Date();
 
   if (input.decision === "decline") {
-    return applyDeclineOutcome(prisma, application, input, decidedAt);
+    const fromStatus = application.status as (typeof DECLINABLE_STATUSES)[number];
+    return applyDeclineOutcome(prisma, application, input, fromStatus, decidedAt);
   }
 
   if (input.decision === "waitlist") {
@@ -167,11 +182,12 @@ async function applyDeclineOutcome(
   prisma: PrismaClient,
   application: LoadedApplication,
   input: DecideApplicationInput,
+  fromStatus: (typeof DECLINABLE_STATUSES)[number],
   decidedAt: Date,
 ): Promise<DecidedApplication> {
   await prisma.$transaction(async (tx) => {
     await tx.application.update({
-      where: { id: application.id, status: "pending" },
+      where: { id: application.id, status: fromStatus },
       data: {
         status: "declined",
         decidedByPersonId: input.caller.id,
@@ -204,7 +220,7 @@ async function applyDeclineOutcome(
       resourceId: application.id,
       scopeType: application.shift.opportunity.chapterId ? "chapter" : "global",
       scopeId: application.shift.opportunity.chapterId ?? undefined,
-      metadata: { requestedDecision: "decline", outcome: "declined" },
+      metadata: { requestedDecision: "decline", outcome: "declined", fromStatus },
     });
   });
 

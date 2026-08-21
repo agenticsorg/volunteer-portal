@@ -12,10 +12,9 @@
  * machines and every Key Use Case from
  * docs/ddd/volunteering-opportunities.md, gated through the shared
  * `@volunteer-portal/authz` `can()` policy module (ADR-0007) exactly the
- * way `modules/identity` gates its own privileged use cases. No tRPC router
- * is wired up yet (`server/api/routers/volunteering.ts` stays an empty
- * stub) — that lands in a later stage, as a thin adapter over the use
- * cases exported here, same split as Phase 2.
+ * way `modules/identity` gates its own privileged use cases. The tRPC
+ * router (`server/api/routers/volunteering.ts`) is a thin adapter over the
+ * use cases exported here, same split as Phase 2.
  */
 
 // --- Opportunity ---

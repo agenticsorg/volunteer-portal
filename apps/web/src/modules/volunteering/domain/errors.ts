@@ -138,7 +138,10 @@ export class DuplicateApplicationError extends Error {
   }
 }
 
-/** DecideApplication precondition: the Application must be `pending`. */
+/**
+ * DecideApplication precondition: the Application must be `pending` for
+ * `accept`/`waitlist`, or `pending`/`waitlisted` for `decline`.
+ */
 export class ApplicationNotPendingError extends Error {
   constructor(applicationId: string, status: string) {
     super(`Application "${applicationId}" is "${status}", not "pending".`);

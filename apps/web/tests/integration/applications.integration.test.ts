@@ -8,7 +8,12 @@ import {
   ForbiddenActionError,
 } from "@/modules/volunteering";
 import { createPerson, grantRoleDirect, createChapterDirect } from "./helpers/identityFixtures";
-import { callerSubject, createOpportunityDirect, createShiftDirect } from "./helpers/volunteeringFixtures";
+import {
+  callerSubject,
+  createApplicationDirect,
+  createOpportunityDirect,
+  createShiftDirect,
+} from "./helpers/volunteeringFixtures";
 
 // Exercises ApplyToShift/DecideApplication/WithdrawApplication (Key Use
 // Cases 4-6): the Shift.capacity/acceptedCount concurrency invariant, and
@@ -140,11 +145,56 @@ describe("applyToShift / decideApplication / withdrawApplication (integration)",
       where: { aggregateType: "Application", aggregateId: secondApp.applicationId, eventType: "ApplicationAccepted" },
     });
     expect(promotionEvents).toHaveLength(1);
+    // Waitlist-promotion's ApplicationAccepted must carry the same payload
+    // shape as a direct DecideApplication accept — opportunityId included
+    // (docs/ddd/volunteering-opportunities.md Domain Events table).
+    expect(promotionEvents[0]?.payload).toMatchObject({
+      applicationId: secondApp.applicationId,
+      shiftId: shift.id,
+      opportunityId: shift.opportunityId,
+      applicantPersonId: second.id,
+    });
 
     const withdrawEvents = await prisma.volunteeringDomainEvent.findMany({
       where: { aggregateType: "Application", aggregateId: firstApp.applicationId, eventType: "ApplicationWithdrawn" },
     });
     expect(withdrawEvents).toHaveLength(1);
+  });
+
+  it("promotes the earliest-by-appliedAt waitlisted application when multiple are waitlisted", async () => {
+    const { lead, shift } = await setup(1);
+    const accepted = track(personIds, await createPerson(prisma, { displayName: "Accepted Applicant" }));
+    const laterWaitlisted = track(personIds, await createPerson(prisma, { displayName: "Later Waitlisted" }));
+    const earlierWaitlisted = track(personIds, await createPerson(prisma, { displayName: "Earlier Waitlisted" }));
+
+    const acceptedApp = await applyToShift(prisma, { applicantPersonId: accepted.id, shiftId: shift.id });
+    await decideApplication(prisma, { caller: callerSubject(lead), applicationId: acceptedApp.applicationId, decision: "accept" });
+
+    // Inserted out of appliedAt order to prove the promotion picks by
+    // appliedAt, not insertion/creation order.
+    const laterApp = await createApplicationDirect(prisma, {
+      shiftId: shift.id,
+      applicantPersonId: laterWaitlisted.id,
+      status: "waitlisted",
+      appliedAt: new Date(Date.now() + 60_000),
+    });
+    const earlierApp = await createApplicationDirect(prisma, {
+      shiftId: shift.id,
+      applicantPersonId: earlierWaitlisted.id,
+      status: "waitlisted",
+      appliedAt: new Date(Date.now() - 60_000),
+    });
+
+    await withdrawApplication(prisma, { callerId: accepted.id, applicationId: acceptedApp.applicationId });
+
+    const promotedRow = await prisma.application.findUniqueOrThrow({ where: { id: earlierApp.id } });
+    expect(promotedRow.status).toBe("accepted");
+
+    const stillWaitlistedRow = await prisma.application.findUniqueOrThrow({ where: { id: laterApp.id } });
+    expect(stillWaitlistedRow.status).toBe("waitlisted");
+
+    const updatedShift = await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
+    expect(updatedShift.acceptedCount).toBe(1);
   });
 
   it("rejects a duplicate active application for the same (applicant, shift) pair", async () => {
@@ -156,6 +206,52 @@ describe("applyToShift / decideApplication / withdrawApplication (integration)",
     await expect(applyToShift(prisma, { applicantPersonId: applicant.id, shiftId: shift.id })).rejects.toThrow(
       DuplicateApplicationError,
     );
+  });
+
+  it("allows declining a waitlisted application (state diagram's waitlisted--decline-->declined arc)", async () => {
+    const { lead, shift } = await setup(1);
+    const applicant = track(personIds, await createPerson(prisma, { displayName: "Waitlisted Applicant" }));
+
+    const application = await createApplicationDirect(prisma, {
+      shiftId: shift.id,
+      applicantPersonId: applicant.id,
+      status: "waitlisted",
+    });
+
+    const { outcome } = await decideApplication(prisma, {
+      caller: callerSubject(lead),
+      applicationId: application.id,
+      decision: "decline",
+    });
+    expect(outcome).toBe("declined");
+
+    const row = await prisma.application.findUniqueOrThrow({ where: { id: application.id } });
+    expect(row.status).toBe("declined");
+    expect(row.decidedByPersonId).toBe(lead.id);
+
+    const events = await prisma.volunteeringDomainEvent.findMany({
+      where: { aggregateType: "Application", aggregateId: application.id, eventType: "ApplicationDeclined" },
+    });
+    expect(events).toHaveLength(1);
+  });
+
+  it("still rejects accept/waitlist decisions against a non-pending application", async () => {
+    const { lead, shift } = await setup(1);
+    const applicant = track(personIds, await createPerson(prisma, { displayName: "Waitlisted Applicant" }));
+
+    const application = await createApplicationDirect(prisma, {
+      shiftId: shift.id,
+      applicantPersonId: applicant.id,
+      status: "waitlisted",
+    });
+
+    await expect(
+      decideApplication(prisma, { caller: callerSubject(lead), applicationId: application.id, decision: "accept" }),
+    ).rejects.toThrow(`Application "${application.id}" is "waitlisted", not "pending".`);
+
+    await expect(
+      decideApplication(prisma, { caller: callerSubject(lead), applicationId: application.id, decision: "waitlist" }),
+    ).rejects.toThrow(`Application "${application.id}" is "waitlisted", not "pending".`);
   });
 
   it("denies decideApplication for a caller without chapter_lead/mentor/org_admin authority", async () => {
