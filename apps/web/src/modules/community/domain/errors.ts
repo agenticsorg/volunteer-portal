@@ -147,6 +147,22 @@ export class SourceRecordNotFoundError extends Error {
 }
 
 /**
+ * CreatePost/GiveKudos, this stage's own Phase 7 build item 5 (the
+ * Community-side half of the Moderation enforcement check): the caller
+ * currently holds an active `suspend` or `ban`
+ * (`moderation.getActiveActionsForPerson`) covering the write's own
+ * scope. Named to mirror `ScopeInvariantViolationError`'s "own `name`
+ * matches a documented throw code" shape, for a future API layer's
+ * `TRPCError` translation.
+ */
+export class ActiveModerationSanctionError extends Error {
+  constructor(actionType: "suspend" | "ban") {
+    super(`Caller has an active "${actionType}" moderation sanction covering this write's scope.`);
+    this.name = "ACTIVE_MODERATION_SANCTION";
+  }
+}
+
+/**
  * An R2-backed adapter call (docs/ddd/community-social.md's Attachment
  * value object; ADR-0011) requires an environment variable that is not
  * set in this environment. Thrown instead of faking success — see

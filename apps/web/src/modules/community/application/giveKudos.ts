@@ -3,7 +3,13 @@ import { newId } from "@volunteer-portal/ulid";
 import { recordAuditEvent } from "@volunteer-portal/audit";
 import type { PolicySubject } from "@volunteer-portal/authz";
 import { getPersonSummary } from "@/modules/identity";
-import { AchievementReferenceMismatchError, PersonNotFoundError, SelfKudosNotAllowedError } from "../domain/errors";
+import { getActiveActionsForPerson } from "@/modules/moderation";
+import {
+  ActiveModerationSanctionError,
+  AchievementReferenceMismatchError,
+  PersonNotFoundError,
+  SelfKudosNotAllowedError,
+} from "../domain/errors";
 import { publishCommunityEvent } from "./publishCommunityEvent";
 
 export interface GiveKudosInput {
@@ -48,6 +54,20 @@ export async function giveKudos(prisma: PrismaClient, input: GiveKudosInput): Pr
   ]);
   if (!fromPerson) throw new PersonNotFoundError(input.caller.id);
   if (!toPerson) throw new PersonNotFoundError(input.toPersonId);
+
+  // Phase 7 build item 5 (docs/plans/implementation-plan.md): before
+  // allowing the write, check for an active suspend/ban via
+  // `moderation.getActiveActionsForPerson`. Kudos carries no chapter/scope
+  // dimension of its own (this file's own doc comment above), so only an
+  // org-wide sanction applies here — a chapter-scoped suspend's effect is
+  // confined to that chapter's own spaces/content, per
+  // docs/ddd/moderation-trust-safety.md's scope rules, and Kudos is not
+  // chapter-scoped content.
+  const activeActions = await getActiveActionsForPerson(prisma, input.caller.id, { scopeType: "org", scopeId: null });
+  const blockingAction = activeActions.find((action) => action.actionType === "suspend" || action.actionType === "ban");
+  if (blockingAction) {
+    throw new ActiveModerationSanctionError(blockingAction.actionType as "suspend" | "ban");
+  }
 
   const kudosId = newId();
 

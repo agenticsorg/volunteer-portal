@@ -112,6 +112,42 @@ function hasContentAuthority(assignments: readonly RoleAssignmentFact[]): boolea
   return isOrgAdmin(assignments) || hasRoleInScope(assignments, "content_admin", "global", null);
 }
 
+/**
+ * True iff the subject holds `org_admin` (global), `moderator` scoped
+ * `global`, or `moderator` scoped `chapter` to exactly `resource.scopeId`
+ * (only meaningful when `resource.scopeType === "chapter"`) — the scope
+ * authority test docs/ddd/moderation-trust-safety.md's ModerationAction
+ * invariant 3 and `ClaimReport`'s own precondition both specify, and
+ * ADR-0007's own illustrative `moderation.act` rule sketch shows in
+ * exactly this shape. Shared by `report.claim` (and `DismissReport`'s
+ * open-report branch) and `moderation_action.take`.
+ */
+function hasModerationAuthorityForScope(
+  resource: Resource,
+  assignments: readonly RoleAssignmentFact[],
+): boolean {
+  return (
+    isOrgAdmin(assignments) ||
+    hasRoleInScope(assignments, "moderator", "global", null) ||
+    (resource.scopeType === "chapter" && hasRoleInScope(assignments, "moderator", "chapter", resource.scopeId))
+  );
+}
+
+/**
+ * True iff the subject is `resource.ownerId` (the claim-holder or issuing
+ * moderator, set by the calling use case) or `org_admin` — the "only the
+ * claim holder / issuing moderator, or org_admin" ownership shape shared
+ * by `report.resolve`, `report.release_claim`, and
+ * `moderation_action.revoke`.
+ */
+function isModerationOwnerOrOrgAdmin(
+  subject: PolicySubject,
+  resource: Resource,
+  assignments: readonly RoleAssignmentFact[],
+): boolean {
+  return resource.ownerId === subject.id || isOrgAdmin(assignments);
+}
+
 interface PolicyRule {
   action: Action;
   allow: (
@@ -255,5 +291,37 @@ export const rules: readonly PolicyRule[] = [
     // posting org-wide, same staff-only shape as `points.adjust`/`badge.award`.
     action: "post.create_org_scope",
     allow: (_subject, _resource, assignments) => isOrgAdmin(assignments),
+  },
+  {
+    // ClaimReport precondition / DismissReport's open-report (fast-dismiss)
+    // branch: scope-authority test, see `hasModerationAuthorityForScope`.
+    action: "report.claim",
+    allow: (_subject, resource, assignments) => hasModerationAuthorityForScope(resource, assignments),
+  },
+  {
+    // ResolveReport / DismissReport's reviewing-report branch: ownership
+    // test, see `isModerationOwnerOrOrgAdmin`. `resource.ownerId` is the
+    // Report's `assignedModeratorId`.
+    action: "report.resolve",
+    allow: (subject, resource, assignments) => isModerationOwnerOrOrgAdmin(subject, resource, assignments),
+  },
+  {
+    // ReleaseReportClaim: same ownership test as `report.resolve`.
+    action: "report.release_claim",
+    allow: (subject, resource, assignments) => isModerationOwnerOrOrgAdmin(subject, resource, assignments),
+  },
+  {
+    // TakeModerationAction precondition (ModerationAction invariant 3,
+    // scope half): scope-authority test against the *requested* action's
+    // own scope, see `hasModerationAuthorityForScope`.
+    action: "moderation_action.take",
+    allow: (_subject, resource, assignments) => hasModerationAuthorityForScope(resource, assignments),
+  },
+  {
+    // RevokeModerationAction precondition (ModerationAction invariant 4):
+    // ownership test, `resource.ownerId` is the action's own
+    // `moderatorPersonId`.
+    action: "moderation_action.revoke",
+    allow: (subject, resource, assignments) => isModerationOwnerOrOrgAdmin(subject, resource, assignments),
   },
 ];

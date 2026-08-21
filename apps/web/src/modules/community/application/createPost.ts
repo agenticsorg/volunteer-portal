@@ -3,7 +3,8 @@ import { newId } from "@volunteer-portal/ulid";
 import { recordAuditEvent } from "@volunteer-portal/audit";
 import { can, type PolicySubject } from "@volunteer-portal/authz";
 import { listActiveRoleAssignments, getPersonSummary } from "@/modules/identity";
-import { PersonNotFoundError, ScopeInvariantViolationError } from "../domain/errors";
+import { getActiveActionsForPerson } from "@/modules/moderation";
+import { ActiveModerationSanctionError, PersonNotFoundError, ScopeInvariantViolationError } from "../domain/errors";
 import { publishCommunityEvent } from "./publishCommunityEvent";
 
 export interface PostAttachmentInput {
@@ -77,6 +78,22 @@ export async function createPost(prisma: PrismaClient, input: CreatePostInput): 
         "A chapter-scoped post's scopeId must equal the author's own chapter membership.",
       );
     }
+  }
+
+  // Phase 7 build item 5 (docs/plans/implementation-plan.md): before
+  // allowing the write, check for an active suspend/ban in the write's own
+  // scope via `moderation.getActiveActionsForPerson` (an Open Host Service
+  // read, not an event subscription — this must be current at write time,
+  // per docs/ddd/moderation-trust-safety.md's Integration & Anti-Corruption
+  // Notes). An org-wide sanction always blocks; a chapter-scoped one blocks
+  // only a post into that same chapter.
+  const activeActions = await getActiveActionsForPerson(prisma, input.caller.id, {
+    scopeType: input.scopeType,
+    scopeId: input.scopeId,
+  });
+  const blockingAction = activeActions.find((action) => action.actionType === "suspend" || action.actionType === "ban");
+  if (blockingAction) {
+    throw new ActiveModerationSanctionError(blockingAction.actionType as "suspend" | "ban");
   }
 
   const attachments = input.attachments ?? [];
