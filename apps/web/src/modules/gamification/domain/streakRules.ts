@@ -19,6 +19,23 @@ export type StreakStatus = "active" | "frozen" | "broken";
 /** Cap on `freezesAvailable` (Streak invariant 3) — "e.g. max 2" per the doc. */
 export const MAX_FREEZES = 2;
 
+// NOTE(replenishment): docs/ddd/gamification.md describes `freezesAvailable`
+// as "capped and periodically replenished — e.g. max 2, +1 per completed
+// calendar month". This module only ever *consumes* freezes
+// (`applyStreakActivity`); there is no replenishment function, application
+// service, or scheduled job entry point yet. That's intentional for this
+// phase — it's not in Phase 5's Build list or completion bar, it mirrors the
+// codebase's existing pattern of leaving periodic maintenance to a later
+// worker-infra stage (see `application/rebuildLeaderboardSnapshot.ts`'s own
+// "a future ...-triggered job calls this" note), and the documented `streak`
+// DDL has no column to track a streak's last-replenished period, so a
+// correct implementation needs a schema decision this phase shouldn't make
+// unilaterally. Flagging here so it isn't lost: without it, a person's grace
+// capacity silently degrades to punish-on-miss after their first two
+// lifetime misses. Once a future phase wires up a monthly replenishment
+// worker, that worker should call into this file rather than reimplementing
+// the rule elsewhere.
+
 export interface StreakState {
   currentLength: number;
   longestLength: number;
