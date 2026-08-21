@@ -1731,3 +1731,186 @@ model ModerationAction {
   @@map("moderation_action")
   @@schema("moderation")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 8 — Notifications: schema only (Notification, NotificationPreference,
+// DeliveryAttempt, plus the inbound-event idempotency ledger for the six
+// event-consumer jobs a later stage builds)
+// ---------------------------------------------------------------------------
+//
+// The Notification, NotificationPreference, and DeliveryAttempt shapes from
+// docs/ddd/notifications.md, matching that doc's own Schema Sketch
+// field-for-field. `notifications.domain_events`
+// (`NotificationsDomainEvent`, above) already exists from Phase 1; this
+// phase adds the three aggregate/entity tables plus the inbound-event
+// idempotency ledger. No use cases, no event consumers, no API, no Resend
+// integration in this migration — those are a later stage; this migration
+// is data model only.
+//
+// `recipient_person_id` (Notification) and `person_id`
+// (NotificationPreference) are intentional soft references (plain columns,
+// no relation, no FK) to `identity.persons.id` — cross-schema, so no FK is
+// possible or wanted, per the Schema Sketch's own comments and ADR-0001.
+// `DeliveryAttempt.notificationId` IS a real, same-schema FK (no explicit
+// `onDelete` in the Schema Sketch's literal DDL, so Prisma's default
+// `ON DELETE RESTRICT` applies) because `Notification` and `DeliveryAttempt`
+// are both owned by this same `notifications` schema — the
+// no-cross-schema-FK rule applies only at bounded-context boundaries, not
+// within one.
+//
+// Unlike every prior phase's status/kind/type columns, this schema's own
+// Schema Sketch deliberately does NOT back `channel` (on both Notification
+// and NotificationPreference) or `status` (DeliveryAttempt) with Postgres
+// enums — its literal DDL writes each as plain `TEXT NOT NULL CHECK (... IN
+// (...))`. `Notification.type` and `NotificationPreference.type` are
+// likewise plain text with no CHECK at all, an application-enforced closed
+// set (see docs/ddd/notifications.md's own "Notification Type" ubiquitous-
+// language entry) — deliberately not a DB enum "to avoid a migration every
+// time a new source event is wired up," same convention as
+// `identity.consent_record.purpose` (ADR-0014). Modeled here as plain
+// `String` fields to match, with every CHECK constraint the sketch specifies
+// hand-authored in the migration SQL (no stable `@@check` attribute in this
+// Prisma version) — same precedent as every other hand-authored CHECK
+// constraint already in this file's earlier phases.
+//
+// Several constructs in the Schema Sketch have no Prisma-schema-language
+// equivalent and are hand-authored in the migration SQL instead — same
+// precedent as every hand-authored addition already in this file's earlier
+// phases:
+//   - `chk_notification_channel`, `chk_notification_source_context`,
+//     `chk_notification_preference_channel`, `chk_delivery_attempt_channel`,
+//     and `chk_delivery_attempt_status` CHECK constraints — the exact five
+//     inline CHECKs the Schema Sketch itself writes (see the header note
+//     above for why these are plain TEXT + CHECK rather than enums).
+//   - `notification_unread_idx`, the partial index on
+//     `(recipient_person_id, created_at DESC) WHERE in_app_read_at IS NULL`
+//     backing "list my unread notifications" (Key Use Case 6,
+//     `ListUnread`) — Prisma's schema language has no partial-index syntax.
+//   - `delivery_attempt_pending_idx`, the partial index on `(created_at)
+//     WHERE status = 'pending' AND channel = 'email'` backing the
+//     graphile-worker drain query for `ProcessDeliveryJob` — same reason.
+//   - `delivery_attempt_provider_message_uq`, the partial unique index on
+//     `provider_message_id WHERE provider_message_id IS NOT NULL` backing
+//     Resend webhook correlation (`HandleResendWebhook`, Key Use Case 7) —
+//     same reason.
+//
+// `notifications.processed_events` (`NotificationsProcessedEvent` below) is
+// not part of docs/ddd/notifications.md's own Schema Sketch — that doc's
+// Integration & Anti-Corruption Notes instead describe idempotency as a
+// per-source-schema `processed_at` column update on the *source* context's
+// own `domain_events` row (no ledger table in this schema at all). This
+// migration adds one anyway, per this stage's own explicit brief, mirroring
+// the `gamification.processed_events` / `community.processed_events`
+// precedent (ADR-0009's idempotent-consumer pattern) for the six
+// per-source-schema consumer jobs a later stage builds
+// (`consumeVolunteeringEvents`, `consumeTrainingEvents`,
+// `consumeGamificationEvents`, `consumeCommunityEvents`,
+// `consumeModerationEvents`, `consumeAdminEvents` — one per source schema
+// listed in the "Consumed" event table, not one per event type). Keyed by a
+// single `id` column (the origin `domain_events.id`, a ULID, already
+// globally unique on its own — same as `community.processed_events`), with
+// `sourceContext` and `eventType` carried alongside for traceability, same
+// shape and reasoning as `CommunityProcessedEvent` above. This is
+// deliberately NOT `packages/outbox`'s generic `(consumer, event_id)`
+// template: each of the six jobs is this context's single logical consumer
+// for its one source schema, not several independent consumers draining the
+// same table. `Notification`'s own `(source_event_id, recipient_person_id)`
+// unique index (invariant 2) is a second, independent line of defense
+// against a duplicate `Notification` row specifically; this ledger is the
+// general per-event idempotency gate a handler checks (and inserts into,
+// same transaction) before doing any work at all, including the
+// zero-row-created "suppressed" outcome that invariant 2's index alone
+// cannot idempotency-gate (a suppressed event leaves no `Notification` row
+// to collide on if reprocessed).
+
+// Aggregate root (docs/ddd/notifications.md "Notification"): the unit of
+// "this person needs to know X," created once per (recipient, source
+// event), never mutated except `in_app_read_at`. Invariant 2 (idempotent by
+// source event) is the unique index below; invariant 1 (never created or
+// delivered for an opted-out (person, type, channel)) and invariant 3
+// (payload is an immutable snapshot) are enforced at the application layer
+// (`QueueNotification`/`ProcessDeliveryJob`, a later stage), not
+// expressible as DDL.
+model Notification {
+  id                String    @id
+  recipientPersonId String    @map("recipient_person_id")
+  type              String
+  payload           Json      @default("{}")
+  channel           String
+  inAppReadAt       DateTime? @map("in_app_read_at") @db.Timestamptz(6)
+  sourceContext     String    @map("source_context")
+  sourceEventId     String    @map("source_event_id")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  deliveryAttempts DeliveryAttempt[]
+
+  @@unique([sourceEventId, recipientPersonId], map: "notification_source_event_recipient_uq")
+  @@index([recipientPersonId, createdAt(sort: Desc)], map: "notification_recipient_created_idx")
+  @@map("notification")
+  @@schema("notifications")
+}
+
+// Entity (docs/ddd/notifications.md "NotificationPreference"): one row per
+// (person, type, channel), governing whether `QueueNotification` includes
+// that channel in the effective set for that person and type. Absence of a
+// row means the type/channel's documented default applies
+// (`packages/shared/src/notificationDefaults.ts`, a later stage) — this
+// table only ever stores explicit overrides.
+model NotificationPreference {
+  id        String   @id
+  personId  String   @map("person_id")
+  type      String
+  channel   String
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([personId, type, channel])
+  @@index([personId], map: "notification_preference_person_idx")
+  @@map("notification_preference")
+  @@schema("notifications")
+}
+
+// Entity, child of `Notification` (docs/ddd/notifications.md
+// "DeliveryAttempt"): one row per attempt to deliver a `Notification` over
+// one channel. A `Notification` with `channel = 'both'` produces two
+// independent `DeliveryAttempt` lineages, each with its own retry history.
+// `in_app` delivery is created and immediately marked `sent` in the same
+// transaction as the `Notification` write (`attemptedAt = createdAt`);
+// `email` delivery starts `pending` and is picked up by
+// `ProcessDeliveryJob` — both a later stage's job, not this migration's.
+model DeliveryAttempt {
+  id                String    @id
+  notificationId    String    @map("notification_id")
+  channel           String
+  status            String    @default("pending")
+  providerMessageId String?   @map("provider_message_id")
+  attemptedAt       DateTime? @map("attempted_at") @db.Timestamptz(6)
+  retryCount        Int       @default(0) @map("retry_count")
+  errorMessage      String?   @map("error_message")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  notification Notification @relation(fields: [notificationId], references: [id])
+
+  @@index([notificationId, attemptedAt(sort: Desc)], map: "delivery_attempt_notification_idx")
+  @@map("delivery_attempt")
+  @@schema("notifications")
+}
+
+// Idempotent inbound-event consumption ledger (ADR-0009), added per this
+// stage's own explicit brief rather than docs/ddd/notifications.md's own
+// Schema Sketch — see the header comment above for the full reasoning and
+// how this differs from `packages/outbox`'s generic `(consumer, event_id)`
+// template. A later stage's six per-source-schema consumer jobs each
+// attempt an insert here inside the same transaction as any resulting
+// `Notification`/`DeliveryAttempt` writes (including the no-row-created
+// "suppressed" outcome); a primary-key conflict means the event was already
+// processed and the transaction no-ops.
+model NotificationsProcessedEvent {
+  id            String   @id
+  sourceContext String   @map("source_context")
+  eventType     String   @map("event_type")
+  processedAt   DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@map("processed_events")
+  @@schema("notifications")
+}
