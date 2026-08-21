@@ -417,11 +417,21 @@ describe("Community (integration)", () => {
     it("joinTeam rejects a second open membership for the same (team, person) — TeamMembership invariant 2", async () => {
       const chapterA = await chapter("Join Team Chapter");
       const founder = await person();
-      const joiner = await person();
+      const joiner = await person({ displayName: "Team Joiner" });
       const { teamId } = await createTeam(prisma, { caller: callerSubject(founder), chapterId: chapterA.id, name: "Joinable Guild" });
 
       const joined = await joinTeam(prisma, { caller: callerSubject(joiner), teamId });
       expect(joined.teamMembershipId).toBeTruthy();
+
+      const feedEntry = await prisma.feedEntry.findFirst({
+        where: { sourceId: joined.teamMembershipId, kind: "team_joined" },
+      });
+      expect(feedEntry).not.toBeNull();
+      expect(feedEntry?.scopeType).toBe("chapter");
+      expect(feedEntry?.scopeId).toBe(chapterA.id);
+      expect(feedEntry?.subjectPersonId).toBe(joiner.id);
+      expect(feedEntry?.summary).toContain("Team Joiner");
+      expect(feedEntry?.summary).toContain("Joinable Guild");
 
       await expect(joinTeam(prisma, { caller: callerSubject(joiner), teamId })).rejects.toBeInstanceOf(
         AlreadyTeamMemberError,
@@ -476,6 +486,16 @@ describe("Community (integration)", () => {
       const row = await prisma.mentorship.findUnique({ where: { id: mentorshipId } });
       expect(row?.status).toBe("active");
       expect(row?.startedAt).not.toBeNull();
+
+      const feedEntry = await prisma.feedEntry.findFirst({
+        where: { sourceId: mentorshipId, kind: "mentorship_started" },
+      });
+      expect(feedEntry).not.toBeNull();
+      expect(feedEntry?.scopeType).toBe("org");
+      expect(feedEntry?.scopeId).toBeNull();
+      expect(feedEntry?.subjectPersonId).toBe(mentee.id);
+      expect(feedEntry?.summary).toContain("Accepting Mentor");
+      expect(feedEntry?.summary).toContain("Accepted Mentee");
 
       await expect(
         acceptMentorship(prisma, { caller: callerSubject(mentor), mentorshipId }),
