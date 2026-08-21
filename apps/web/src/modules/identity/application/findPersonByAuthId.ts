@@ -5,6 +5,17 @@ import type { PrismaClient } from "@prisma/client";
  * context and to callers of `identity.me` — never the raw Prisma row,
  * and certainly never anything Supabase-shaped (see
  * `server/auth/verified-session.ts`'s file-level ACL note).
+ *
+ * `primaryChapterId` is included because this is the caller's OWN,
+ * already-authenticated profile (`ctx.person`), not the cross-context
+ * `getPersonSummary` Open Host Service read another module uses to look
+ * up an arbitrary `personId` — that read deliberately excludes chapter
+ * membership (see `getPersonSummary.ts`'s own doc comment). A module that
+ * needs "the chapter *the current caller* belongs to" (e.g.
+ * `community.createPost`'s `authorChapterId`, whose own doc comment
+ * calls for it to be "resolved ... from the authenticated session/
+ * profile") reads it off `ctx.person` here, never via a cross-context
+ * query for someone else's chapter.
  */
 export interface PersonSummary {
   personId: string;
@@ -12,6 +23,7 @@ export interface PersonSummary {
   displayName: string;
   avatarUrl: string | null;
   status: string;
+  primaryChapterId: string | null;
 }
 
 /**
@@ -28,7 +40,14 @@ export async function findPersonByAuthId(
 ): Promise<PersonSummary | null> {
   const person = await prisma.person.findUnique({
     where: { supabaseAuthId },
-    select: { id: true, publicSlug: true, displayName: true, avatarUrl: true, status: true },
+    select: {
+      id: true,
+      publicSlug: true,
+      displayName: true,
+      avatarUrl: true,
+      status: true,
+      primaryChapterId: true,
+    },
   });
 
   if (!person) return null;
@@ -39,5 +58,6 @@ export async function findPersonByAuthId(
     displayName: person.displayName,
     avatarUrl: person.avatarUrl,
     status: person.status,
+    primaryChapterId: person.primaryChapterId,
   };
 }

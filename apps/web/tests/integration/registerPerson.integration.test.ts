@@ -95,6 +95,7 @@ describe("registerPerson (integration)", () => {
       displayName: "Ada Volunteer",
       avatarUrl: null,
       status: "active",
+      primaryChapterId: null,
     });
   });
 

@@ -8,21 +8,25 @@
  * never be imported directly by another module — see the module-boundary
  * lint rule (eslint.config.mjs) for enforcement.
  *
- * Phase 6 scope, this stage: the domain/application layer only — every
- * aggregate/invariant and Key Use Case from docs/ddd/community-social.md
- * this stage's Build list calls for (Post, FeedEntry, Kudos, Team,
- * TeamMembership, Mentorship), gated through `@volunteer-portal/authz`'s
- * `can()` (ADR-0007) where the doc specifies it (`post.create_org_scope`
- * only — Post invariant 1; every other mutation here has no `can()` gate
- * of its own, matching the API Contract Sketch's plain `protectedProcedure`
- * shape), Person data resolved only via `identity.getPersonSummary`, and
- * consuming `gamification`/`volunteering`/`training`'s domain events
- * idempotently per ADR-0009 (`consumeInboundEvent`, keyed by
- * `community.processed_events` — see that table's own Prisma-schema
+ * Phase 6 scope: the domain/application layer — every aggregate/invariant
+ * and Key Use Case from docs/ddd/community-social.md's Build list (Post,
+ * FeedEntry, Kudos, Team, TeamMembership, Mentorship), gated through
+ * `@volunteer-portal/authz`'s `can()` (ADR-0007) where the doc specifies it
+ * (`post.create_org_scope` only — Post invariant 1; every other mutation
+ * here has no `can()` gate of its own, matching the API Contract Sketch's
+ * plain `protectedProcedure` shape), Person data resolved only via
+ * `identity.getPersonSummary`, and consuming `gamification`/`volunteering`/
+ * `training`'s domain events idempotently per ADR-0009 (`consumeInboundEvent`,
+ * keyed by `community.processed_events` — see that table's own Prisma-schema
  * comment for why it doesn't call `packages/outbox`'s `drainOutbox()`
- * unmodified, same precedent as `gamification`'s own consumer).
+ * unmodified, same precedent as `gamification`'s own consumer) — plus, this
+ * stage, the API layer: the full tRPC router
+ * (`server/api/routers/community.ts`, mirroring `identity`/`volunteering`/
+ * `training`/`gamification`'s own thin-adapter shape) and `searchPosts`
+ * (ADR-0017 full-text search over `community.post.search_vector`, build
+ * item 2).
  *
- * FeedEntry's hard behavioral split (this stage's own completion bar) is
+ * FeedEntry's hard behavioral split (this phase's own completion bar) is
  * implemented exactly as documented: native `kind = 'post'` entries are a
  * thin pointer resolved by a live join against `community.post` at read
  * time (`getChapterFeed`/`getOrgFeed`, via the private `feedRead.ts`), so a
@@ -31,9 +35,7 @@
  * never re-read from its source context again.
  *
  * Deliberately NOT in this stage (a later stage's job, or explicitly out
- * of this stage's Build list): the tRPC router
- * (`server/api/routers/community.ts` stays an empty stub for now, same
- * split as every other module) and the graphile-worker task that drains
+ * of this stage's Build list): the graphile-worker task that drains
  * `gamification.domain_events`/`volunteering.domain_events`/
  * `training.domain_events` and calls `consumeInboundEvent` per row (apps/worker
  * infra); `HandlePersonAnonymized` and `HandleModerationActionTaken`
@@ -42,7 +44,9 @@
  * the erasure fan-out is a separate, cross-module concern); `LeaveTeam`,
  * `CompleteMentorship`/`DeclineMentorship`/`CancelMentorship`, and
  * `RebuildFeedProjection` (Build item 5 names exactly "Team
- * creation/joining and the Mentorship request-accept lifecycle").
+ * creation/joining and the Mentorship request-accept lifecycle" — no
+ * application-layer use case exists for it yet, so this stage's router has
+ * no `rebuildFeedProjection` procedure either).
  */
 
 // --- Inbound event consumption (ADR-0009) ---
@@ -89,6 +93,10 @@ export type { GetChapterFeedInput } from "./application/getChapterFeed";
 
 export { getOrgFeed } from "./application/getOrgFeed";
 export type { FeedEntryDTO, FeedPage, FeedPagination } from "./application/feedRead";
+
+/** ADR-0017 full-text search (Phase 6 build item 2) — see this file's own header. */
+export { searchPosts } from "./application/searchPosts";
+export type { SearchPostsInput, PostSearchResult } from "./application/searchPosts";
 
 // --- Kudos ---
 export { giveKudos } from "./application/giveKudos";
