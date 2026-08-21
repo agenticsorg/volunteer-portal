@@ -357,6 +357,21 @@ impl VolunteerRepository for SqlxVolunteerRepository {
         .execute(&mut **tx)
         .await?;
 
+        // Delete-then-reinsert rather than insert-only: keeps `identity`
+        // in sync with the in-memory `oauth_links`, which every existing
+        // caller only ever grows (so this is a no-op re-sync for them),
+        // but `Volunteer::anonymize` sets `oauth_links` to `vec![]` --
+        // without this, an anonymized volunteer's `identity` rows (which
+        // carry `email_at_link_time`, itself personally identifying
+        // data) would survive forever, undermining "genuinely
+        // unrecoverable" (compliance-audit.md). Self-service callers
+        // (running as the volunteer's own session, not an admin) have no
+        // `identity_delete` RLS grant, so this delete affects zero rows
+        // for them -- only the admin-driven anonymization path can
+        // actually remove a row.
+        sqlx::query!(r#"delete from identity where volunteer_id = $1"#, volunteer.id().as_uuid())
+            .execute(&mut **tx)
+            .await?;
         for link in volunteer.oauth_links() {
             sqlx::query!(
                 r#"insert into identity (volunteer_id, provider, provider_user_id, email, email_verified, linked_at)

@@ -8,7 +8,7 @@ mod roster;
 mod summary;
 mod volunteer;
 
-pub use events::{OAuthAccountLinked, RoleChanged, VolunteerApproved, VolunteerOnboarded};
+pub use events::{OAuthAccountLinked, RoleChanged, VolunteerAnonymized, VolunteerApproved, VolunteerOnboarded};
 pub use oauth::{OAuthLink, OAuthProvider};
 pub use repository::{SqlxVolunteerRepository, VolunteerRepository};
 pub use roster::{SqlxVolunteerRosterQuery, VolunteerRosterFilter, VolunteerRosterQuery, VolunteerRosterRow};

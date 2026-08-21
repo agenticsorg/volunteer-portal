@@ -128,7 +128,7 @@ jobs:
       # signup form. Per build-roadmap.md, this covers ~30% of success
       # criteria and is not a substitute for the required manual pass
       # (keyboard-only navigation, a screen reader) -- see
-      # apps/web/MANUAL_ACCESSIBILITY_TESTING.md for that gap.
+      # apps/web/ACCESSIBILITY_AUDIT.md for that gap.
       - name: Accessibility tests (axe-core)
         working-directory: apps/web
         run: npm test

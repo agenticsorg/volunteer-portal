@@ -6,7 +6,7 @@ import { LogHoursForm } from "./log-hours-form";
 
 /**
  * Prompt 4.2's WCAG 2.1 AA exit criterion, automated half -- see
- * MANUAL_ACCESSIBILITY_TESTING.md for the manual half this doesn't
+ * ACCESSIBILITY_AUDIT.md for the manual half this doesn't
  * cover.
  */
 describe("LogHoursForm accessibility", () => {

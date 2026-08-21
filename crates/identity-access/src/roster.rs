@@ -31,6 +31,10 @@ pub struct VolunteerRosterRow {
     pub status: VolunteerStatus,
     pub skills: Vec<String>,
     pub timezone: String,
+    /// ADR-0014's self-reported field, surfaced here (rather than only
+    /// on the `Volunteer` aggregate) so the admin roster is the "actually
+    /// monitorable" source that ADR's GDPR Art. 27 trigger requires.
+    pub country_region: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -55,7 +59,55 @@ pub trait VolunteerRosterQuery: Send + Sync {
         tx: &mut Transaction<'_, Postgres>,
         filter: &VolunteerRosterFilter,
     ) -> Result<i64, RepoError>;
+
+    /// ADR-0014's Phase 10 monitoring query: counts approved volunteers
+    /// whose self-reported `country_region` matches one of the EU's 27
+    /// member states (by name, case-insensitively -- the field is free
+    /// text, not a controlled country-code column). Crossing 10 is the
+    /// ADR's trigger to revisit the "no standing EU representative"
+    /// decision. Only `Approved` volunteers count -- a `PendingApproval`
+    /// signup hasn't yet become an active processing relationship, and
+    /// an anonymized (`Suspended`, `country_region: None`) volunteer no
+    /// longer has a country to count.
+    async fn eu_volunteer_count(&self, tx: &mut Transaction<'_, Postgres>) -> Result<i64, RepoError>;
 }
+
+/// The EU's 27 member states, by the name a volunteer would plausibly
+/// self-report in a free-text field. Not a controlled ISO-3166 code list
+/// (the schema stores free text, matching concept.md's signup form) --
+/// this is a best-effort monitoring aid for ADR-0014's trigger, not a
+/// legal determination. Kept as a `const` here (identity-access owns the
+/// `volunteer` table's columns) rather than duplicated at the API layer.
+const EU_MEMBER_STATES: &[&str] = &[
+    "austria",
+    "belgium",
+    "bulgaria",
+    "croatia",
+    "cyprus",
+    "czechia",
+    "czech republic",
+    "denmark",
+    "estonia",
+    "finland",
+    "france",
+    "germany",
+    "greece",
+    "hungary",
+    "ireland",
+    "italy",
+    "latvia",
+    "lithuania",
+    "luxembourg",
+    "malta",
+    "netherlands",
+    "poland",
+    "portugal",
+    "romania",
+    "slovakia",
+    "slovenia",
+    "spain",
+    "sweden",
+];
 
 pub struct SqlxVolunteerRosterQuery;
 
@@ -69,7 +121,7 @@ impl VolunteerRosterQuery for SqlxVolunteerRosterQuery {
         offset: i64,
     ) -> Result<Vec<VolunteerRosterRow>, RepoError> {
         let rows = sqlx::query!(
-            r#"select id, name, email, role, status, skills, timezone,
+            r#"select id, name, email, role, status, skills, timezone, country_region,
                       created_at as "created_at: DateTime<Utc>"
                from volunteer
                where ($1::text is null or status = $1)
@@ -96,6 +148,7 @@ impl VolunteerRosterQuery for SqlxVolunteerRosterQuery {
                 status: VolunteerStatus::parse(&r.status).expect("status column must be a valid VolunteerStatus"),
                 skills: r.skills,
                 timezone: r.timezone,
+                country_region: r.country_region,
                 created_at: r.created_at,
             })
             .collect())
@@ -114,6 +167,18 @@ impl VolunteerRosterQuery for SqlxVolunteerRosterQuery {
             filter.status.map(|s| s.as_str()),
             filter.role.map(|r| r.as_str()),
             filter.skill.as_deref(),
+        )
+        .fetch_one(&mut **tx)
+        .await?;
+        Ok(count)
+    }
+
+    async fn eu_volunteer_count(&self, tx: &mut Transaction<'_, Postgres>) -> Result<i64, RepoError> {
+        let eu_member_states: Vec<String> = EU_MEMBER_STATES.iter().map(|s| s.to_string()).collect();
+        let count: i64 = sqlx::query_scalar!(
+            r#"select count(*) as "count!" from volunteer
+               where status = 'approved' and lower(country_region) = any($1)"#,
+            &eu_member_states,
         )
         .fetch_one(&mut **tx)
         .await?;

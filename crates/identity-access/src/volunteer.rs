@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
-use kernel::{DomainEvent, Skill, VolunteerId};
+use kernel::{DataSubjectRequestId, DomainEvent, Skill, VolunteerId};
 use serde::{Deserialize, Serialize};
 
-use crate::events::{OAuthAccountLinked, RoleChanged, VolunteerApproved, VolunteerOnboarded};
+use crate::events::{OAuthAccountLinked, RoleChanged, VolunteerAnonymized, VolunteerApproved, VolunteerOnboarded};
 use crate::oauth::{OAuthLink, OAuthProvider};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -448,6 +448,44 @@ impl Volunteer {
         Ok(())
     }
 
+    /// compliance-audit.md's "Deletion invariant": anonymization in
+    /// place, never physical row deletion. `id`, agreement timestamps,
+    /// `role`, and `created_at` are retained -- the *fact* they once
+    /// agreed to the code of conduct at a given time is itself a record
+    /// worth keeping, distinct from their identity. Every other
+    /// personally identifying field is overwritten with a tombstone
+    /// value; `oauth_links` becomes empty so `VolunteerRepository::save`
+    /// removes the corresponding `identity` rows (which carry
+    /// `email_at_link_time`, itself PII) rather than orphaning them.
+    ///
+    /// Called only by the `DataSubjectRequest` completion flow
+    /// (`apps/api`'s handler, orchestrating `compliance-audit`'s
+    /// `DataSubjectRequest` and this repository's `save` in one
+    /// transaction -- `compliance-audit` depends on `identity-access`
+    /// but not the reverse, per context-map.md's acyclic graph, so the
+    /// orchestration lives at the composition root, not inside either
+    /// context), never as a general-purpose profile edit -- this is why
+    /// it pushes a distinct `VolunteerAnonymized` event rather than
+    /// reusing any other `Volunteer` mutation event above.
+    pub fn anonymize(mut self, request_id: DataSubjectRequestId, anonymized_by: VolunteerId) -> Volunteer {
+        self.name = "[deleted volunteer]".to_string();
+        self.email = format!("deleted-{}@invalid", self.id);
+        self.discord_id = None;
+        self.timezone = "UTC".to_string();
+        self.skills = Vec::new();
+        self.availability = Availability::empty();
+        self.country_region = None;
+        self.oauth_links = Vec::new();
+        self.status = VolunteerStatus::Suspended;
+        self.pending_events.push(Box::new(VolunteerAnonymized {
+            volunteer_id: self.id,
+            request_id,
+            anonymized_by,
+            occurred_at: Utc::now(),
+        }));
+        self
+    }
+
     /// Drains and returns every domain event recorded since the last
     /// call — the repository's `save()` implementation calls this
     /// exactly once per persisted mutation and hands the result to the
@@ -616,6 +654,45 @@ mod tests {
         )
         .unwrap();
         assert_eq!(v.oauth_links().len(), 2);
+    }
+
+    #[test]
+    fn anonymize_tombstones_every_identifying_field_and_emits_volunteer_anonymized() {
+        let mut v = signup();
+        v.record_agreements(complete_agreements());
+        let admin_id = VolunteerId::new();
+        v.approve(admin_id).unwrap();
+        v.take_events();
+        let request_id = kernel::DataSubjectRequestId::new();
+        let original_id = v.id();
+        let original_created_at = v.created_at();
+        let original_agreements = v.agreements().clone();
+
+        let anonymized = v.anonymize(request_id, admin_id);
+
+        assert_eq!(anonymized.id(), original_id, "id must be retained");
+        assert_eq!(anonymized.created_at(), original_created_at, "created_at must be retained");
+        assert_eq!(anonymized.agreements(), &original_agreements, "agreement timestamps must be retained");
+        assert_eq!(anonymized.name(), "[deleted volunteer]");
+        assert!(anonymized.email().starts_with("deleted-") && anonymized.email().ends_with("@invalid"));
+        assert_eq!(anonymized.discord_id(), None);
+        assert!(anonymized.skills().is_empty());
+        assert!(anonymized.oauth_links().is_empty());
+        assert_eq!(anonymized.country_region(), None);
+        assert_eq!(anonymized.status(), VolunteerStatus::Suspended);
+    }
+
+    #[test]
+    fn anonymize_emits_exactly_one_volunteer_anonymized_event() {
+        let mut v = signup();
+        v.take_events();
+        let admin_id = VolunteerId::new();
+        let request_id = kernel::DataSubjectRequestId::new();
+
+        let mut anonymized = v.anonymize(request_id, admin_id);
+        let events = anonymized.take_events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type(), "volunteer_anonymized");
     }
 
     #[test]

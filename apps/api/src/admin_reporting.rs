@@ -65,6 +65,10 @@ pub struct VolunteerRosterRowDto {
     pub status: String,
     pub skills: Vec<String>,
     pub timezone: String,
+    /// ADR-0014's self-reported field, surfaced here so an admin can see
+    /// per-volunteer country/region alongside the aggregate
+    /// `eu_volunteer_count` below.
+    pub country_region: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -78,6 +82,7 @@ impl From<identity_access::VolunteerRosterRow> for VolunteerRosterRowDto {
             status: r.status.as_str().to_string(),
             skills: r.skills,
             timezone: r.timezone,
+            country_region: r.country_region,
             created_at: r.created_at,
         }
     }
@@ -88,6 +93,12 @@ impl From<identity_access::VolunteerRosterRow> for VolunteerRosterRowDto {
 pub struct VolunteerRosterPage {
     pub rows: Vec<VolunteerRosterRowDto>,
     pub total: i64,
+    /// ADR-0014's GDPR Art. 27 monitoring trigger: approved volunteers
+    /// whose self-reported country/region is an EU member state.
+    /// Crossing 10 is the ADR's signal to revisit the "no standing EU
+    /// representative" decision -- independent of `total`/pagination, so
+    /// this is the real count regardless of which page is being viewed.
+    pub eu_volunteer_count: i64,
 }
 
 /// GET /admin/volunteers -- paginated roster view (default page size
@@ -112,11 +123,13 @@ pub async fn list_volunteer_roster(
         .await
         .map_err(|_| ApiError::Internal)?;
     let total = repo.roster_count(&mut tx, &filter).await.map_err(|_| ApiError::Internal)?;
+    let eu_volunteer_count = repo.eu_volunteer_count(&mut tx).await.map_err(|_| ApiError::Internal)?;
     tx.commit().await.map_err(|_| ApiError::Internal)?;
 
     Ok(Json(VolunteerRosterPage {
         rows: rows.into_iter().map(Into::into).collect(),
         total,
+        eu_volunteer_count,
     }))
 }
 
@@ -146,7 +159,17 @@ pub async fn export_volunteer_roster_csv(
 
     let mut writer = csv::WriterBuilder::new().from_writer(Vec::new());
     writer
-        .write_record(["id", "name", "email", "role", "status", "skills", "timezone", "created_at"])
+        .write_record([
+            "id",
+            "name",
+            "email",
+            "role",
+            "status",
+            "skills",
+            "timezone",
+            "country_region",
+            "created_at",
+        ])
         .map_err(|_| ApiError::Internal)?;
     for row in rows {
         writer
@@ -158,6 +181,7 @@ pub async fn export_volunteer_roster_csv(
                 row.status.as_str().to_string(),
                 row.skills.join(";"),
                 row.timezone,
+                row.country_region.unwrap_or_default(),
                 row.created_at.to_rfc3339(),
             ])
             .map_err(|_| ApiError::Internal)?;
