@@ -1,0 +1,96 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select he.id, he.volunteer_id, he.assignment_id, he.date, he.hours, he.description,\n                      he.status, he.approver_id,\n                      he.decided_at as \"decided_at: chrono::DateTime<chrono::Utc>\",\n                      he.adjustment_adjusted_by, he.adjustment_previous_hours, he.adjustment_reason,\n                      he.adjustment_adjusted_at as \"adjustment_adjusted_at: chrono::DateTime<chrono::Utc>\"\n               from hour_entry he\n               join assignment a on a.id = he.assignment_id\n               where a.project_id = $1 and he.status = 'approved' and he.date >= $2 and he.date <= $3\n               order by he.date asc",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "volunteer_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "assignment_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 4,
+        "name": "hours",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "approver_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "decided_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "adjustment_adjusted_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 10,
+        "name": "adjustment_previous_hours",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 11,
+        "name": "adjustment_reason",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "adjustment_adjusted_at: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "f59415bf779dc1157e867e83dd00ae4ae61dee4141b19c6a1945e9e3f909fb13"
+}

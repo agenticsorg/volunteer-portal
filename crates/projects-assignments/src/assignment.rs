@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(assignment.participation_mode(), ParticipationMode::Attendee);
 
         // Now promote them to lead of the project.
-        project.add_lead(volunteer, LeadRole::CoLead).unwrap();
+        project.add_lead(volunteer, LeadRole::CoLead, VolunteerId::new()).unwrap();
 
         // The existing assignment is untouched -- still Attendee.
         assert_eq!(assignment.participation_mode(), ParticipationMode::Attendee);

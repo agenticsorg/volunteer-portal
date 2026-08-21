@@ -57,6 +57,16 @@ impl AuditableEvent for ProjectCreated {
 pub struct ProjectLeadAdded {
     pub project_id: ProjectId,
     pub volunteer_id: VolunteerId,
+    /// The actor who performed the add -- deliberately distinct from
+    /// `volunteer_id` (the lead being added), the same shape
+    /// `ProjectClosed::closed_by` already uses. Prompt 8.2's audit-
+    /// coverage suite caught this event previously reporting
+    /// `volunteer_id` as its own `AuditableEvent::actor()`, which made
+    /// `audit_log.actor_id` the *new lead*, not whoever added them --
+    /// wrong in general, and a hard RLS failure specifically whenever
+    /// the adding actor isn't the volunteer being added (i.e. every real
+    /// admin/lead-performed add).
+    pub added_by: VolunteerId,
     pub occurred_at: DateTime<Utc>,
 }
 
@@ -74,7 +84,7 @@ impl DomainEvent for ProjectLeadAdded {
 
 impl AuditableEvent for ProjectLeadAdded {
     fn actor(&self) -> ActorId {
-        ActorId::Volunteer(self.volunteer_id)
+        ActorId::Volunteer(self.added_by)
     }
     fn action(&self) -> AuditAction {
         AuditAction::Updated
@@ -97,6 +107,9 @@ impl AuditableEvent for ProjectLeadAdded {
 pub struct ProjectLeadRemoved {
     pub project_id: ProjectId,
     pub volunteer_id: VolunteerId,
+    /// The actor who performed the removal -- see
+    /// `ProjectLeadAdded::added_by`'s doc comment; same bug, same fix.
+    pub removed_by: VolunteerId,
     pub occurred_at: DateTime<Utc>,
 }
 
@@ -114,7 +127,7 @@ impl DomainEvent for ProjectLeadRemoved {
 
 impl AuditableEvent for ProjectLeadRemoved {
     fn actor(&self) -> ActorId {
-        ActorId::Volunteer(self.volunteer_id)
+        ActorId::Volunteer(self.removed_by)
     }
     fn action(&self) -> AuditAction {
         AuditAction::Updated

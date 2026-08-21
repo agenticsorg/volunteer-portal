@@ -281,6 +281,7 @@ impl Project {
         &mut self,
         volunteer_id: VolunteerId,
         role: LeadRole,
+        added_by: VolunteerId,
     ) -> Result<(), ProjectError> {
         if self.is_lead(volunteer_id) {
             return Err(ProjectError::AlreadyALead);
@@ -293,13 +294,14 @@ impl Project {
         self.pending_events.push(Box::new(ProjectLeadAdded {
             project_id: self.id,
             volunteer_id,
+            added_by,
             occurred_at: Utc::now(),
         }));
         Ok(())
     }
 
     /// Invariant 1: the last lead cannot be removed.
-    pub fn remove_lead(&mut self, volunteer_id: VolunteerId) -> Result<(), ProjectError> {
+    pub fn remove_lead(&mut self, volunteer_id: VolunteerId, removed_by: VolunteerId) -> Result<(), ProjectError> {
         if !self.is_lead(volunteer_id) {
             return Err(ProjectError::NotALead);
         }
@@ -310,6 +312,7 @@ impl Project {
         self.pending_events.push(Box::new(ProjectLeadRemoved {
             project_id: self.id,
             volunteer_id,
+            removed_by,
             occurred_at: Utc::now(),
         }));
         Ok(())
@@ -347,7 +350,7 @@ mod tests {
         let mut project =
             Project::create("Website".into(), "".into(), ProjectType::Project, vec![], initial, None)
                 .unwrap();
-        let err = project.remove_lead(initial).unwrap_err();
+        let err = project.remove_lead(initial, initial).unwrap_err();
         assert_eq!(err, ProjectError::CannotRemoveLastLead);
         assert_eq!(project.leads().len(), 1);
     }
@@ -359,10 +362,39 @@ mod tests {
         let mut project =
             Project::create("Website".into(), "".into(), ProjectType::Project, vec![], initial, None)
                 .unwrap();
-        project.add_lead(co, LeadRole::CoLead).unwrap();
-        project.remove_lead(co).unwrap();
+        project.add_lead(co, LeadRole::CoLead, initial).unwrap();
+        project.remove_lead(co, initial).unwrap();
         assert_eq!(project.leads().len(), 1);
         assert!(project.is_lead(initial));
+    }
+
+    /// Regression test for a real bug Prompt 8.2's audit-coverage suite
+    /// found: `ProjectLeadAdded`/`ProjectLeadRemoved` used to report the
+    /// *affected* lead as `AuditableEvent::actor()`, not the admin/lead
+    /// who performed the add/remove -- wrong in general, and a hard RLS
+    /// failure in practice whenever those two differ (i.e. every real
+    /// admin-performed lead change).
+    #[test]
+    fn add_lead_and_remove_lead_attribute_the_performing_actor_not_the_affected_lead() {
+        use kernel::ActorId;
+
+        let initial = lead();
+        let co = lead();
+        let admin = lead();
+        let mut project =
+            Project::create("Website".into(), "".into(), ProjectType::Project, vec![], initial, None)
+                .unwrap();
+        project.take_events(); // discard ProjectCreated -- not under test here
+
+        project.add_lead(co, LeadRole::CoLead, admin).unwrap();
+        let added_events = project.take_events();
+        let added = added_events[0].as_auditable().unwrap();
+        assert_eq!(added.actor(), ActorId::Volunteer(admin), "actor must be the admin who added the lead, not the added lead");
+
+        project.remove_lead(co, admin).unwrap();
+        let removed_events = project.take_events();
+        let removed = removed_events[0].as_auditable().unwrap();
+        assert_eq!(removed.actor(), ActorId::Volunteer(admin), "actor must be the admin who removed the lead, not the removed lead");
     }
 
     // Invariant 2: project_type is immutable -- there is simply no
