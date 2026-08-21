@@ -324,4 +324,13 @@ export const rules: readonly PolicyRule[] = [
     action: "moderation_action.revoke",
     allow: (subject, resource, assignments) => isModerationOwnerOrOrgAdmin(subject, resource, assignments),
   },
+  {
+    // SetNotificationPreference (docs/ddd/notifications.md, Key Use Case
+    // 2): "a person may only set their own preferences" — strict
+    // ownership, no staff-override branch (unlike the `dsar.*` actions
+    // above, this doc's own text never mentions a staff-on-behalf-of
+    // path for someone else's notification settings).
+    action: "notification.preference.manage",
+    allow: (subject, resource) => resource.ownerId === subject.id,
+  },
 ];
