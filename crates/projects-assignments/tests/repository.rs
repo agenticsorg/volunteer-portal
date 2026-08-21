@@ -53,7 +53,7 @@ async fn lead_membership_query_reflects_co_lead_membership() {
     let mut project =
         Project::create("Website Revamp".into(), "".into(), ProjectType::Project, vec![], lead_a, None)
             .unwrap();
-    project.add_lead(lead_b, LeadRole::CoLead).unwrap();
+    project.add_lead(lead_b, LeadRole::CoLead, lead_a).unwrap();
 
     let repo = SqlxProjectRepository;
     let mut tx = db.begin_scoped(lead_a.as_uuid()).await.unwrap();
@@ -96,7 +96,7 @@ async fn save_and_find_by_id_round_trips_a_project_with_two_leads() {
         None,
     )
     .unwrap();
-    project.add_lead(lead_b, LeadRole::CoLead).unwrap();
+    project.add_lead(lead_b, LeadRole::CoLead, lead_a).unwrap();
 
     let repo = SqlxProjectRepository;
     let mut tx = db.begin_scoped(lead_a.as_uuid()).await.unwrap();

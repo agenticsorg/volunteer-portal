@@ -30,6 +30,18 @@ pub trait HourEntryRepository: Send + Sync {
         range: DateRange,
     ) -> Result<Vec<HourEntry>, RepoError>;
 
+    /// Prompt 8.1's "hours report by project and date range" -- the
+    /// same shape as `find_approved_by_volunteer_and_range` (approved-
+    /// only, date-range-filtered), scoped by project instead of
+    /// volunteer, so the report reuses this repository's existing query
+    /// pattern rather than a second, drift-prone reporting path.
+    async fn find_approved_by_project_and_range(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        project_id: ProjectId,
+        range: DateRange,
+    ) -> Result<Vec<HourEntry>, RepoError>;
+
     async fn save(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -178,6 +190,51 @@ impl HourEntryRepository for SqlxHourEntryRepository {
                where volunteer_id = $1 and status = 'approved' and date >= $2 and date <= $3
                order by date asc"#,
             volunteer_id.as_uuid(),
+            range.start,
+            range.end,
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                row_to_hour_entry(
+                    r.id,
+                    r.volunteer_id,
+                    r.assignment_id,
+                    r.date,
+                    r.hours,
+                    r.description,
+                    r.status,
+                    r.approver_id,
+                    r.decided_at,
+                    r.adjustment_adjusted_by,
+                    r.adjustment_previous_hours,
+                    r.adjustment_reason,
+                    r.adjustment_adjusted_at,
+                )
+            })
+            .collect())
+    }
+
+    async fn find_approved_by_project_and_range(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        project_id: ProjectId,
+        range: DateRange,
+    ) -> Result<Vec<HourEntry>, RepoError> {
+        let rows = sqlx::query!(
+            r#"select he.id, he.volunteer_id, he.assignment_id, he.date, he.hours, he.description,
+                      he.status, he.approver_id,
+                      he.decided_at as "decided_at: chrono::DateTime<chrono::Utc>",
+                      he.adjustment_adjusted_by, he.adjustment_previous_hours, he.adjustment_reason,
+                      he.adjustment_adjusted_at as "adjustment_adjusted_at: chrono::DateTime<chrono::Utc>"
+               from hour_entry he
+               join assignment a on a.id = he.assignment_id
+               where a.project_id = $1 and he.status = 'approved' and he.date >= $2 and he.date <= $3
+               order by he.date asc"#,
+            project_id.as_uuid(),
             range.start,
             range.end,
         )

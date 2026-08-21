@@ -8,6 +8,7 @@
 
 pub mod account_linking;
 pub mod active_membership_adapter;
+pub mod admin_reporting;
 pub mod assignment_recipient_adapter;
 pub mod assignment_snapshot_adapter;
 pub mod auth;
@@ -94,6 +95,12 @@ pub fn build_router(state: AppState) -> Router {
             "/volunteers/{volunteer_id}/verification-letter",
             get(verification_letter::generate_verification_letter),
         )
+        .route("/admin/volunteers", get(admin_reporting::list_volunteer_roster))
+        .route(
+            "/admin/volunteers/export.csv",
+            get(admin_reporting::export_volunteer_roster_csv),
+        )
+        .route("/admin/reports/hours", get(admin_reporting::hours_report))
         .route(
             "/discord/interactions",
             post(discord_interactions::handle_interaction),
